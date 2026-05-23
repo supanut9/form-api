@@ -15,6 +15,7 @@ import { FillService } from '../../core/events/fill.service.js'
 import { WebhookService } from '../../core/webhooks/webhook.service.js'
 import { FileService } from '../../core/files/file.service.js'
 import { AuditService } from '../../core/audit/audit.service.js'
+import { stripSkippedFields } from '../../core/submissions/payload.validator.js'
 
 const ANON_COOKIE = 'form_anon'
 
@@ -110,9 +111,9 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       // Strip unknown keys (defense against malicious payloads).
-      const sanitized: Record<string, unknown> = {}
+      const knownOnly: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(request.body.payload)) {
-        if (fieldIds.has(k)) sanitized[k] = v
+        if (fieldIds.has(k)) knownOnly[k] = v
       }
 
       const ipHash = hashIp(request.ip)
@@ -145,7 +146,7 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
             version: form.currentVersion,
             accountId: accountSub ?? null,
             anonymousToken: accountSub ? null : anonymousToken,
-            payloadJsonb: sanitized as object,
+            payloadJsonb: knownOnly as object,
             ipHash,
             userAgent: ua,
             source: 'link',
@@ -154,6 +155,30 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
           select: { id: true, submittedAt: true },
         })
       })
+
+      // Phase 3A: re-derive page visibility server-side and strip any fields
+      // belonging to pages the user shouldn't have reached. Writes a
+      // submission.skipped_fields_stripped audit row on detection. Audit
+      // failures are swallowed inside the helper.
+      const { sanitized: visitedOnly } = await stripSkippedFields(
+        // Zod-parsed spec satisfies the runner's FullSpec shape at runtime
+        // (scoring.then refinement enforces at least one of add|set).
+        spec as unknown as Parameters<typeof stripSkippedFields>[0],
+        knownOnly,
+        form.id,
+        form.currentVersion,
+        app.prisma,
+        submission.id,
+        accountSub ?? null,
+      )
+      if (
+        Object.keys(visitedOnly).length !== Object.keys(knownOnly).length
+      ) {
+        await app.prisma.formSubmission.update({
+          where: { id: submission.id },
+          data: { payloadJsonb: visitedOnly as object },
+        })
+      }
 
       // Link any uploaded files referenced in the payload to this submission.
       // File fields carry the file_id (UUID string) returned by the presign
@@ -164,7 +189,7 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
       for (const page of spec.pages) {
         for (const f of page.fields) {
           if (f.type !== 'file') continue
-          const v = sanitized[f.id]
+          const v = visitedOnly[f.id]
           if (typeof v === 'string' && isUuid(v)) fileIds.push(v)
           else if (Array.isArray(v)) {
             for (const item of v) if (typeof item === 'string' && isUuid(item)) fileIds.push(item)
@@ -239,7 +264,7 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
             account_id: accountSub ?? null,
             anonymous_token: accountSub ? null : anonymousToken,
             submitted_at: submission.submittedAt.toISOString(),
-            payload: sanitized,
+            payload: visitedOnly,
           },
         })
         .catch((err) => {

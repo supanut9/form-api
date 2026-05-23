@@ -55,6 +55,8 @@ jobs:
       S3_REGION: us-east-1
       S3_ACCESS_KEY: forms
       S3_SECRET_KEY: forms-dev-secret
+      # Enable integration tests (test/integration/**) — requires live Postgres.
+      INTEGRATION_TESTS: "true"
 
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +78,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Unit tests
+      - name: Unit + integration tests
         run: npm test
 
       - name: Build
@@ -199,6 +201,9 @@ jobs:
 
       - name: Seed e2e fixtures
         run: npx tsx test/e2e/setup/seed-form.ts
+
+      - name: Seed NPS template (Phase 3A)
+        run: npx tsx test/e2e/setup/seed-template.ts
 
       - name: Run Playwright e2e
         run: npm run e2e
