@@ -17,6 +17,11 @@ export interface PublishGuardError {
     | 'page_id_pattern'
     | 'archived_form'
     | 'empty_page'
+    // 3A codes
+    | 'unknown_calc_ref'
+    | 'unknown_page_ref'
+    | 'formula_unknown_ref'
+    | 'scoring_unknown_ref'
   message: string
   path?: string[]
 }
@@ -188,6 +193,118 @@ export function validatePublishableSpec(
             path: [fieldCtx, 'rows_from_field'],
           })
         }
+      }
+    }
+  }
+
+  // ── Phase 3A: calculations / scoring / actions cross-reference checks ───────
+
+  // Build the set of known calc ids for formula-ref and scoring-ref validation.
+  const allCalcIds = new Set<string>()
+  if (spec.calculations) {
+    for (const calc of spec.calculations) {
+      allCalcIds.add(calc.id)
+    }
+  }
+
+  // 6. Calculations — verify formula references to fld_ and calc_ identifiers.
+  if (spec.calculations) {
+    // Regex that finds fld_… and calc_… identifiers inside a formula string.
+    // Matches both {var:"fld_x"} style refs and bare identifiers used by
+    // HyperFormula custom-function wrappers (e.g. SUM(fld_qty, calc_total)).
+    const FORMULA_ID_RE = /\b(fld_[a-z0-9_-]+|calc_[a-z0-9_-]+)\b/gi
+
+    for (let ci = 0; ci < spec.calculations.length; ci++) {
+      const calc = spec.calculations[ci]
+      if (!calc) continue
+      const ctx = `calculations[${ci}]`
+
+      const matches = [...calc.formula.matchAll(FORMULA_ID_RE)]
+      for (const m of matches) {
+        const ref = m[1]
+        if (!ref) continue
+        if (ref.startsWith('fld_') && !allFieldIds.has(ref)) {
+          errors.push({
+            code: 'formula_unknown_ref',
+            message: `Calculation "${calc.id}" formula references unknown field "${ref}"`,
+            path: [ctx, 'formula'],
+          })
+        } else if (ref.startsWith('calc_') && ref !== calc.id && !allCalcIds.has(ref)) {
+          errors.push({
+            code: 'formula_unknown_ref',
+            message: `Calculation "${calc.id}" formula references unknown calc "${ref}"`,
+            path: [ctx, 'formula'],
+          })
+        }
+      }
+    }
+  }
+
+  // 7. Actions — verify page_id, jump_to_page, and skip_pages targets.
+  if (spec.actions) {
+    for (let ai = 0; ai < spec.actions.length; ai++) {
+      const action = spec.actions[ai]
+      if (!action) continue
+      const ctx = `actions[${ai}]`
+
+      // trigger source page must exist
+      if (!seenPageIds.has(action.page_id)) {
+        errors.push({
+          code: 'unknown_page_ref',
+          message: `Action page_id "${action.page_id}" does not exist`,
+          path: [ctx, 'page_id'],
+        })
+      }
+
+      // do.jump_to_page or do.skip_pages targets must exist
+      const doClause = action.do as Record<string, unknown>
+      if ('jump_to_page' in doClause) {
+        const target = doClause['jump_to_page'] as string
+        if (!seenPageIds.has(target)) {
+          errors.push({
+            code: 'unknown_page_ref',
+            message: `Action do.jump_to_page "${target}" does not exist`,
+            path: [ctx, 'do', 'jump_to_page'],
+          })
+        }
+      } else if ('skip_pages' in doClause) {
+        // skip_pages may be an array of page ids OR a numeric skip count (L2 form).
+        // Only validate page-id references when it is an array of strings.
+        const rawSkip = doClause['skip_pages']
+        if (Array.isArray(rawSkip)) {
+          const targets = rawSkip as string[]
+          for (let ti = 0; ti < targets.length; ti++) {
+            const target = targets[ti]
+            if (!target) continue
+            if (!seenPageIds.has(target)) {
+              errors.push({
+                code: 'unknown_page_ref',
+                message: `Action do.skip_pages[${ti}] "${target}" does not exist`,
+                path: [ctx, 'do', 'skip_pages', String(ti)],
+              })
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 8. Scoring rules — var: refs must be "score", a known fld_, or a known calc_.
+  if (spec.scoring) {
+    for (let ri = 0; ri < spec.scoring.rules.length; ri++) {
+      const rule = spec.scoring.rules[ri]
+      if (!rule) continue
+      const ctx = `scoring.rules[${ri}].if`
+
+      for (const ref of collectVarRefs(rule.if)) {
+        if (ref === 'score') continue
+        if (ref.startsWith('fld_') && allFieldIds.has(ref)) continue
+        if (ref.startsWith('calc_') && allCalcIds.has(ref)) continue
+        errors.push({
+          code: 'scoring_unknown_ref',
+          message: `Scoring rule[${ri}].if references unknown variable "${ref}"`,
+          path: [ctx],
+        })
       }
     }
   }

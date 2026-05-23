@@ -20,6 +20,7 @@ export type AuditAction =
   | 'submission.delete'
   | 'submission.restore'
   | 'submission.export'
+  | 'submission.skipped_fields_stripped'
   // events
   | 'event.create'
   | 'event.update'

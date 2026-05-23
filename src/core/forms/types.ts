@@ -8,6 +8,11 @@
 
 import type { FormDefinition } from '@prisma/client'
 import { z } from 'zod'
+import {
+  CalculationsSchema,
+  ScoringSchema,
+  ActionsSchema,
+} from './spec-3a.js'
 
 // ── Domain row aliases ────────────────────────────────────────────────────────
 
@@ -119,6 +124,10 @@ export const formSpecSchema = z.object({
   thank_you: thankYouSpecSchema.optional(),
   submit: submitConfigSchema.optional(),
   prefill: prefillConfigSchema.optional(),
+  // ── Phase 3A extensions (optional; missing keys = Phase-1 spec, still valid)
+  calculations: CalculationsSchema.optional(),
+  scoring: ScoringSchema.optional(),
+  actions: ActionsSchema.optional(),
 })
 
 export type FieldSpec = z.infer<typeof fieldSpecSchema>
