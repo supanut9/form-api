@@ -1,0 +1,114 @@
+{
+  "id": "tpl_nps",
+  "version": 1,
+  "title": "Net Promoter Score (NPS)",
+  "type": "dynamic",
+  "access": {
+    "mode": "public_anonymous",
+    "require_account": false
+  },
+  "theme": {
+    "primary_color": "#059669"
+  },
+  "pages": [
+    {
+      "id": "pg_1",
+      "title": "Your Experience",
+      "fields": [
+        {
+          "id": "fld_score",
+          "type": "radio",
+          "label": "How likely are you to recommend us to a friend or colleague?",
+          "required": true,
+          "helpText": "0 = Not at all likely, 10 = Extremely likely",
+          "options": [
+            { "value": "0", "label": "0" },
+            { "value": "1", "label": "1" },
+            { "value": "2", "label": "2" },
+            { "value": "3", "label": "3" },
+            { "value": "4", "label": "4" },
+            { "value": "5", "label": "5" },
+            { "value": "6", "label": "6" },
+            { "value": "7", "label": "7" },
+            { "value": "8", "label": "8" },
+            { "value": "9", "label": "9" },
+            { "value": "10", "label": "10" }
+          ]
+        },
+        {
+          "id": "fld_reason",
+          "type": "textarea",
+          "label": "What's the main reason for your score?",
+          "required": false,
+          "helpText": "Your honest feedback helps us improve."
+        }
+      ]
+    },
+    {
+      "id": "pg_followup",
+      "title": "Help Us Improve",
+      "fields": [
+        {
+          "id": "fld_improvement",
+          "type": "textarea",
+          "label": "What could we do better?",
+          "required": false,
+          "helpText": "We take every piece of feedback seriously and review responses weekly."
+        }
+      ]
+    },
+    {
+      "id": "pg_promoter",
+      "title": "Thanks for the Love",
+      "fields": [
+        {
+          "id": "fld_referral",
+          "type": "text",
+          "label": "Know someone who'd benefit from us? Share their name.",
+          "required": false,
+          "helpText": "Optional — we'll reach out with a personal invite on your behalf."
+        }
+      ]
+    }
+  ],
+  "thank_you": {
+    "title": "Thank you for your feedback!",
+    "body_md": "Your input makes a real difference. We read every response and use it to shape our roadmap. If you left contact details, expect to hear from us."
+  },
+  "scoring": {
+    "enabled": true,
+    "rules": [
+      {
+        "if": { "<=": [{ "var": "fld_score" }, "6"] },
+        "then": { "set": 1 }
+      },
+      {
+        "if": { "and": [{ ">=": [{ "var": "fld_score" }, "7"] }, { "<=": [{ "var": "fld_score" }, "8"] }] },
+        "then": { "set": 2 }
+      },
+      {
+        "if": { ">=": [{ "var": "fld_score" }, "9"] },
+        "then": { "set": 3 }
+      }
+    ],
+    "buckets": [
+      { "min": 1, "max": 1, "label": "detractor" },
+      { "min": 2, "max": 2, "label": "passive" },
+      { "min": 3, "max": 3, "label": "promoter" }
+    ]
+  },
+  "actions": [
+    {
+      "trigger": "page_exit",
+      "page_id": "pg_1",
+      "if": { "<": [{ "var": "fld_score" }, "7"] },
+      "do": { "jump_to_page": "pg_followup" }
+    },
+    {
+      "trigger": "page_exit",
+      "page_id": "pg_1",
+      "if": { ">=": [{ "var": "fld_score" }, "7"] },
+      "do": { "jump_to_page": "pg_promoter" }
+    }
+  ]
+}

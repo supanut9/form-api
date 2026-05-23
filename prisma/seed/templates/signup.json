@@ -1,0 +1,51 @@
+{
+  "id": "tpl_signup",
+  "version": 1,
+  "title": "Newsletter & Waitlist Signup",
+  "type": "dynamic",
+  "access": {
+    "mode": "public_anonymous",
+    "require_account": false
+  },
+  "theme": {
+    "primary_color": "#DB2777"
+  },
+  "pages": [
+    {
+      "id": "pg_1",
+      "title": "Stay in the Loop",
+      "fields": [
+        {
+          "id": "fld_email",
+          "type": "email",
+          "label": "Email Address",
+          "required": true,
+          "helpText": "Your email is safe with us — no spam, ever."
+        },
+        {
+          "id": "fld_first_name",
+          "type": "text",
+          "label": "First Name",
+          "required": false,
+          "helpText": "Optional, but we'd love to address you by name."
+        },
+        {
+          "id": "fld_interest_areas",
+          "type": "multiselect",
+          "label": "What are you interested in?",
+          "required": false,
+          "helpText": "We'll personalise your emails based on your selections.",
+          "options": [
+            { "value": "product_updates", "label": "Product Updates" },
+            { "value": "blog", "label": "Blog & Articles" },
+            { "value": "events", "label": "Events & Webinars" }
+          ]
+        }
+      ]
+    }
+  ],
+  "thank_you": {
+    "title": "You're subscribed!",
+    "body_md": "Welcome aboard! Look out for your first email soon. You can update your preferences or unsubscribe at any time using the link at the bottom of any message."
+  }
+}

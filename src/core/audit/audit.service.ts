@@ -15,6 +15,10 @@ export type AuditAction =
   | 'form.archive'
   | 'form.unarchive'
   | 'form.version.publish'
+  // templates (Phase 3A)
+  | 'template.create'
+  | 'template.update'
+  | 'template.delete'
   // submissions
   | 'submission.create'
   | 'submission.delete'
@@ -44,6 +48,7 @@ export type AuditAction =
 export type AuditSubject =
   | 'Form'
   | 'FormVersion'
+  | 'FormTemplate'
   | 'Submission'
   | 'FormEvent'
   | 'Webhook'

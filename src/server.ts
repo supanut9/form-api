@@ -33,6 +33,7 @@ import { rolesAdminRoutes } from "./routes/admin/roles.js";
 import { eventStatusInternalRoutes } from "./routes/internal/event-status.js";
 import { publicAuthRoutes } from "./routes/public/auth.js";
 import { prefillPublicRoutes } from "./routes/public/prefill.js";
+import { templatesAdminRoutes } from "./routes/admin/templates.js";
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -139,6 +140,7 @@ export async function buildServer() {
   // No /v1 prefix: matches the cms-api convention and what form-admin expects.
   await app.register(adminSessionRoutes);
   await app.register(formsAdminRoutes);
+  await app.register(templatesAdminRoutes);
   await app.register(versionsAdminRoutes);
   await app.register(renderSpecPublicRoutes);
   await app.register(submitPublicRoutes);

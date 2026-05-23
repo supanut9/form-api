@@ -1,0 +1,90 @@
+{
+  "id": "tpl_registration",
+  "version": 1,
+  "title": "Event Registration",
+  "type": "dynamic",
+  "access": {
+    "mode": "public_anonymous",
+    "require_account": false
+  },
+  "theme": {
+    "primary_color": "#0F766E"
+  },
+  "pages": [
+    {
+      "id": "pg_1",
+      "title": "Register Your Spot",
+      "fields": [
+        {
+          "id": "fld_name",
+          "type": "text",
+          "label": "Full Name",
+          "required": true,
+          "helpText": "Your name as it should appear on your name badge."
+        },
+        {
+          "id": "fld_email",
+          "type": "email",
+          "label": "Email Address",
+          "required": true,
+          "helpText": "Your ticket and event details will be sent here."
+        },
+        {
+          "id": "fld_phone",
+          "type": "phone",
+          "label": "Phone Number",
+          "required": false,
+          "helpText": "Optional. We'll only contact you if there's a last-minute change."
+        },
+        {
+          "id": "fld_session_choice",
+          "type": "select",
+          "label": "Which Session Are You Attending?",
+          "required": true,
+          "helpText": "Each session has limited capacity — first come, first served.",
+          "options": [
+            { "value": "morning", "label": "Morning Session — 9:00 AM to 12:00 PM" },
+            { "value": "afternoon", "label": "Afternoon Session — 1:00 PM to 4:00 PM" },
+            { "value": "full_day", "label": "Full Day — 9:00 AM to 5:00 PM" }
+          ]
+        },
+        {
+          "id": "fld_dietary",
+          "type": "multiselect",
+          "label": "Dietary Restrictions",
+          "required": false,
+          "helpText": "Lunch will be provided. Let us know about any requirements.",
+          "options": [
+            { "value": "vegetarian", "label": "Vegetarian" },
+            { "value": "vegan", "label": "Vegan" },
+            { "value": "gluten_free", "label": "Gluten-Free" },
+            { "value": "nut_allergy", "label": "Nut Allergy" },
+            { "value": "dairy_free", "label": "Dairy-Free" },
+            { "value": "halal", "label": "Halal" },
+            { "value": "kosher", "label": "Kosher" },
+            { "value": "none", "label": "No restrictions" }
+          ]
+        },
+        {
+          "id": "fld_needs_accommodation",
+          "type": "checkbox",
+          "label": "I require accessibility accommodations",
+          "required": false,
+          "helpText": "Check this if you need wheelchair access, sign language interpretation, or other support."
+        },
+        {
+          "id": "fld_accommodation_details",
+          "type": "textarea",
+          "label": "Please describe your accommodation needs",
+          "required": false,
+          "helpText": "Be as specific as possible so we can make the right arrangements.",
+          "show_if": { "==": [{ "var": "fld_needs_accommodation" }, true] }
+        }
+      ]
+    }
+  ],
+  "thank_you": {
+    "title": "You're registered!",
+    "body_md": "Your spot is confirmed. Check your email for a ticket and calendar invite. We look forward to seeing you there — if anything changes, reach out and we'll do our best to accommodate you."
+  }
+}

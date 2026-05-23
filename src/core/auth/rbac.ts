@@ -37,6 +37,7 @@ export type FormAction =
 export type FormSubject =
   | "Form"
   | "FormVersion"
+  | "FormTemplate"
   | "Submission"
   | "FormEvent"
   | "Webhook"
@@ -72,6 +73,7 @@ function buildStaticAbility(roles: FormRole[]): FormAbility {
         can("read", "AuditLog");
         can("manage", "FormEvent");
         can("manage", "Webhook");
+        can("manage", "FormTemplate");
         cannot("manage", "ApiToken");
         cannot("manage", "Role");
         cannot("manage", "Permission");
@@ -80,6 +82,7 @@ function buildStaticAbility(roles: FormRole[]): FormAbility {
       case "viewer":
         can("read", "Form");
         can("read", "FormVersion");
+        can("read", "FormTemplate");
         can("read", "Submission");
         break;
     }
@@ -188,10 +191,12 @@ function applyStaticRules(
       can("read", "AuditLog");
       can("manage", "FormEvent");
       can("manage", "Webhook");
+      can("manage", "FormTemplate");
       break;
     case "viewer":
       can("read", "Form");
       can("read", "FormVersion");
+      can("read", "FormTemplate");
       can("read", "Submission");
       break;
   }

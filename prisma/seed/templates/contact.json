@@ -1,0 +1,61 @@
+{
+  "id": "tpl_contact",
+  "version": 1,
+  "title": "Contact Us",
+  "type": "dynamic",
+  "access": {
+    "mode": "public_anonymous",
+    "require_account": false
+  },
+  "theme": {
+    "primary_color": "#0891B2"
+  },
+  "pages": [
+    {
+      "id": "pg_1",
+      "title": "Send Us a Message",
+      "fields": [
+        {
+          "id": "fld_name",
+          "type": "text",
+          "label": "Your Name",
+          "required": true,
+          "helpText": "First and last name so we know who we're talking to."
+        },
+        {
+          "id": "fld_email",
+          "type": "email",
+          "label": "Email Address",
+          "required": true,
+          "helpText": "We'll reply to this address within 1–2 business days."
+        },
+        {
+          "id": "fld_subject",
+          "type": "select",
+          "label": "Subject",
+          "required": true,
+          "helpText": "Choose the topic that best fits your message.",
+          "options": [
+            { "value": "general", "label": "General Enquiry" },
+            { "value": "support", "label": "Technical Support" },
+            { "value": "billing", "label": "Billing & Payments" },
+            { "value": "partnership", "label": "Partnership Opportunity" },
+            { "value": "press", "label": "Press & Media" },
+            { "value": "other", "label": "Other" }
+          ]
+        },
+        {
+          "id": "fld_message",
+          "type": "textarea",
+          "label": "Message",
+          "required": true,
+          "helpText": "Please be as specific as possible — it helps us help you faster."
+        }
+      ]
+    }
+  ],
+  "thank_you": {
+    "title": "Message received!",
+    "body_md": "Thanks for reaching out. Our team will review your message and get back to you within 1–2 business days. In the meantime, you might find answers in our [Help Center](#)."
+  }
+}

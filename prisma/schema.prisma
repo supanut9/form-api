@@ -403,6 +403,39 @@ model AuditLog {
 }
 
 // ---------------------------------------------------------------------------
+// Template tables (Phase 3A)
+// ---------------------------------------------------------------------------
+
+model FormTemplate {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId   String?  @map("workspace_id") @db.Uuid // null until 3C ships
+  slug          String   @unique
+  title         String
+  description   String?
+  specJson      Json     @map("spec_json")
+  category      String // 'survey' | 'lead' | 'feedback' | 'rsvp' | 'nps' | ...
+  featuredOrder Int?     @map("featured_order") // null = not featured
+  createdBy     String?  @map("created_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  uses FormTemplateUse[]
+
+  @@index([category, featuredOrder])
+  @@map("form_templates")
+}
+
+model FormTemplateUse {
+  templateId String   @map("template_id") @db.Uuid
+  formId     String   @map("form_id") @db.Uuid
+  usedAt     DateTime @default(now()) @map("used_at") @db.Timestamptz
+
+  template FormTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, formId])
+  @@map("form_template_uses")
+}
+
+// ---------------------------------------------------------------------------
 // Rate-limit state
 // Synthetic id PK + @@unique on (key, window_started_at).
 // ---------------------------------------------------------------------------

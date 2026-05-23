@@ -1,0 +1,77 @@
+{
+  "id": "tpl_feedback",
+  "version": 1,
+  "title": "Product Feedback",
+  "type": "dynamic",
+  "access": {
+    "mode": "public_anonymous",
+    "require_account": false
+  },
+  "theme": {
+    "primary_color": "#D97706"
+  },
+  "pages": [
+    {
+      "id": "pg_1",
+      "title": "Your Experience",
+      "fields": [
+        {
+          "id": "fld_satisfaction",
+          "type": "radio",
+          "label": "Overall, how satisfied are you with the product?",
+          "required": true,
+          "helpText": "1 = Very dissatisfied, 5 = Very satisfied",
+          "options": [
+            { "value": "1", "label": "1 — Very Dissatisfied" },
+            { "value": "2", "label": "2 — Dissatisfied" },
+            { "value": "3", "label": "3 — Neutral" },
+            { "value": "4", "label": "4 — Satisfied" },
+            { "value": "5", "label": "5 — Very Satisfied" }
+          ]
+        },
+        {
+          "id": "fld_liked_most",
+          "type": "textarea",
+          "label": "What do you like most about the product?",
+          "required": false,
+          "helpText": "Hearing what works well helps us double down on the right things."
+        },
+        {
+          "id": "fld_liked_least",
+          "type": "textarea",
+          "label": "What do you like least, or what frustrated you?",
+          "required": false,
+          "helpText": "Honest criticism is the most valuable feedback we receive."
+        }
+      ]
+    },
+    {
+      "id": "pg_2",
+      "title": "Final Thoughts",
+      "fields": [
+        {
+          "id": "fld_would_recommend",
+          "type": "radio",
+          "label": "Would you recommend this product to a colleague or friend?",
+          "required": true,
+          "helpText": "Your recommendation is the highest compliment we can receive.",
+          "options": [
+            { "value": "yes", "label": "Yes, definitely" },
+            { "value": "no", "label": "Not at this time" }
+          ]
+        },
+        {
+          "id": "fld_additional_comments",
+          "type": "textarea",
+          "label": "Any other comments or suggestions?",
+          "required": false,
+          "helpText": "Feel free to share anything else — no detail is too small."
+        }
+      ]
+    }
+  ],
+  "thank_you": {
+    "title": "Feedback received — thank you!",
+    "body_md": "Your time is valuable and we genuinely appreciate you sharing it with us. Every response is read by our product team and directly influences our roadmap."
+  }
+}

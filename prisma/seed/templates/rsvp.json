@@ -1,0 +1,82 @@
+{
+  "id": "tpl_rsvp",
+  "version": 1,
+  "title": "Wedding & Event RSVP",
+  "type": "dynamic",
+  "access": {
+    "mode": "public_anonymous",
+    "require_account": false
+  },
+  "theme": {
+    "primary_color": "#7C3AED"
+  },
+  "pages": [
+    {
+      "id": "pg_1",
+      "title": "Your RSVP",
+      "fields": [
+        {
+          "id": "fld_attending",
+          "type": "radio",
+          "label": "Will you be attending?",
+          "required": true,
+          "helpText": "Please let us know so we can plan accordingly.",
+          "options": [
+            { "value": "yes", "label": "Yes, I'll be there!" },
+            { "value": "no", "label": "Regretfully declining" },
+            { "value": "maybe", "label": "Maybe — I'll confirm soon" }
+          ]
+        },
+        {
+          "id": "fld_name",
+          "type": "text",
+          "label": "Your Full Name",
+          "required": true,
+          "helpText": "Enter the name(s) as you'd like them on the seating chart."
+        },
+        {
+          "id": "fld_email",
+          "type": "email",
+          "label": "Email Address",
+          "required": false,
+          "helpText": "We'll send event details and updates to this address."
+        },
+        {
+          "id": "fld_party_size",
+          "type": "number",
+          "label": "Number of Guests in Your Party",
+          "required": false,
+          "helpText": "Include yourself. Enter 1 if you're coming solo."
+        },
+        {
+          "id": "fld_dietary",
+          "type": "multiselect",
+          "label": "Dietary Restrictions",
+          "required": false,
+          "helpText": "Select all that apply. We want everyone to enjoy the meal.",
+          "options": [
+            { "value": "vegetarian", "label": "Vegetarian" },
+            { "value": "vegan", "label": "Vegan" },
+            { "value": "gluten_free", "label": "Gluten-Free" },
+            { "value": "nut_allergy", "label": "Nut Allergy" },
+            { "value": "dairy_free", "label": "Dairy-Free" },
+            { "value": "halal", "label": "Halal" },
+            { "value": "kosher", "label": "Kosher" },
+            { "value": "none", "label": "No restrictions" }
+          ]
+        },
+        {
+          "id": "fld_notes",
+          "type": "textarea",
+          "label": "Additional Notes",
+          "required": false,
+          "helpText": "Anything else we should know? Special requests, accessibility needs, etc."
+        }
+      ]
+    }
+  ],
+  "thank_you": {
+    "title": "You're on the list!",
+    "body_md": "Thank you for responding — your RSVP has been received. We can't wait to celebrate with you. Check your email for a confirmation and keep an eye out for further details closer to the date."
+  }
+}

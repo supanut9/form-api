@@ -1,0 +1,74 @@
+{
+  "id": "tpl_lead_capture",
+  "version": 1,
+  "title": "B2B Lead Capture",
+  "type": "dynamic",
+  "access": {
+    "mode": "public_anonymous",
+    "require_account": false
+  },
+  "theme": {
+    "primary_color": "#1D4ED8"
+  },
+  "pages": [
+    {
+      "id": "pg_1",
+      "title": "Get Started",
+      "fields": [
+        {
+          "id": "fld_full_name",
+          "type": "text",
+          "label": "Full Name",
+          "required": true,
+          "helpText": "Your first and last name."
+        },
+        {
+          "id": "fld_work_email",
+          "type": "email",
+          "label": "Work Email",
+          "required": true,
+          "helpText": "Please use your company email — we don't accept personal addresses."
+        },
+        {
+          "id": "fld_company",
+          "type": "text",
+          "label": "Company Name",
+          "required": true,
+          "helpText": "The name of your organisation or business."
+        },
+        {
+          "id": "fld_company_size",
+          "type": "select",
+          "label": "Company Size",
+          "required": false,
+          "helpText": "Approximate headcount helps us tailor the right plan for you.",
+          "options": [
+            { "value": "1_10", "label": "1–10 employees" },
+            { "value": "11_50", "label": "11–50 employees" },
+            { "value": "51_200", "label": "51–200 employees" },
+            { "value": "201_1000", "label": "201–1,000 employees" },
+            { "value": "1001_plus", "label": "1,000+ employees" }
+          ]
+        },
+        {
+          "id": "fld_use_case",
+          "type": "textarea",
+          "label": "Tell Us About Your Use Case",
+          "required": false,
+          "helpText": "What problem are you trying to solve? The more detail, the better we can help."
+        },
+        {
+          "id": "fld_consent",
+          "type": "checkbox",
+          "label": "I agree to receive product updates and relevant communications.",
+          "required": true,
+          "helpText": "You can unsubscribe at any time. We never sell your data."
+        }
+      ]
+    }
+  ],
+  "thank_you": {
+    "title": "We'll be in touch soon!",
+    "body_md": "Thanks for your interest. A member of our sales team will reach out within one business day to schedule a personalised demo. In the meantime, feel free to explore our [documentation](#)."
+  }
+}
