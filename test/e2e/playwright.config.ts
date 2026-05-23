@@ -16,8 +16,8 @@ import { defineConfig, devices } from '@playwright/test';
  *   pnpm -F form-api e2e
  */
 export default defineConfig({
-  testDir: './e2e',
-  globalSetup: './e2e/global-setup.ts',
+  testDir: '.',
+  globalSetup: './global-setup.ts',
   fullyParallel: false,
   workers: 1,
   retries: 1,

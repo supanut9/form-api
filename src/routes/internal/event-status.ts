@@ -28,9 +28,7 @@ export const eventStatusInternalRoutes: FastifyPluginAsync = async (fastify) => 
   app.get(
     '/internal/events/:eventKey/status',
     {
-      preHandler: [requireServiceToken('events.read').bind(app as unknown as {
-        prisma: import('@prisma/client').PrismaClient
-      })],
+      preHandler: [requireServiceToken('events.read')],
       schema: {
         tags: ['internal', 'events'],
         params: paramsSchema,

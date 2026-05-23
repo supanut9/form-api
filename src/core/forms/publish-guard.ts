@@ -77,6 +77,7 @@ export function validatePublishableSpec(
   const seenPageIds = new Set<string>()
   for (let pi = 0; pi < spec.pages.length; pi++) {
     const page = spec.pages[pi]
+    if (!page) continue
     const pageCtx = `pages[${pi}]`
 
     // 2a. Duplicate page id.
@@ -111,7 +112,8 @@ export function validatePublishableSpec(
     // 2b & 3b. Field-level: duplicate ids and pattern — build allFieldIds set.
     const seenFieldIdsOnPage = new Set<string>()
     for (let fi = 0; fi < (page.fields ?? []).length; fi++) {
-      const field = page.fields[fi]
+      const field = page.fields?.[fi]
+      if (!field) continue
       const fieldCtx = `${pageCtx}.fields[${fi}]`
 
       // 2b. Duplicate field id (cross-page).
@@ -141,6 +143,7 @@ export function validatePublishableSpec(
   // We need allFieldIds to be fully populated before this pass.
   for (let pi = 0; pi < spec.pages.length; pi++) {
     const page = spec.pages[pi]
+    if (!page) continue
     const pageCtx = `pages[${pi}]`
 
     // Page-level show_if.
@@ -158,6 +161,7 @@ export function validatePublishableSpec(
 
     for (let fi = 0; fi < (page.fields ?? []).length; fi++) {
       const field = page.fields[fi]
+      if (!field) continue
       const fieldCtx = `${pageCtx}.fields[${fi}]`
 
       // Field-level show_if.

@@ -27,8 +27,8 @@ services:
       LOG_LEVEL: info
       # Wave 2 vars — uncomment when Prisma schema lands (Lane L4)
       # DATABASE_URL: postgres://forms:forms@form-postgres:5432/form_api
-      # Wave 5 vars — uncomment when BullMQ + webhooks land (Lane L13)
-      # REDIS_URL: redis://redis:6379
+      # Wave 5 / FORMS-014 — BullMQ webhook worker (Lane L13)
+      REDIS_URL: redis://redis:6379
     depends_on:
       - form-postgres
       - form-minio

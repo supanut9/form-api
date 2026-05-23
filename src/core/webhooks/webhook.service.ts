@@ -1,20 +1,22 @@
 /**
  * Webhook CRUD + delivery service.
  *
- * Phase 1 delivery model:
- *  - Deliveries are dispatched in-process via setImmediate after the submit
- *    request returns (no BullMQ worker required — simpler local dev).
- *  - Each enqueued attempt creates a FormWebhookDelivery row. The dispatcher
- *    writes attempt outcome + response code/body excerpt.
- *  - On non-2xx or network error, status moves to `failed` and the operator
- *    can manually replay from the admin UI / API.
- *  - Future: swap in BullMQ with exponential backoff (the schema already
- *    supports it).
+ * Delivery model (BullMQ-backed, FORMS-014):
+ *  - After a form submission, `enqueueOnSubmit` creates a FormWebhookDelivery
+ *    row (status: pending) for each active matching webhook and enqueues a
+ *    BullMQ job. The actual HTTP POST is performed by the webhook worker
+ *    (src/workers/webhook.worker.ts) — a separate process.
+ *  - Replays (admin API) also enqueue a new BullMQ job via `replayDelivery`.
+ *  - The `dispatch` method is retained for internal use by the worker; it is
+ *    no longer called directly from the HTTP request path.
+ *  - Retry policy: 8 attempts with exponential backoff (30 s base ≈ 2 h).
+ *    After all attempts, the delivery row is marked `failed`.
  */
 import type { PrismaClient } from '@prisma/client'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { canonicalJson, signPayload } from './signer.js'
 import { openSecret, sealSecret } from './crypto.js'
+import { enqueueWebhookDelivery } from '../../queues/webhook.queue.js'
 
 export type WebhookEventName = 'submitted' | 'failed'
 
@@ -122,9 +124,10 @@ export class WebhookService {
   }
 
   /**
-   * Enqueue (in-process) a delivery for each active webhook bound to this form
-   * that subscribes to "submitted". Returns the list of created delivery row
-   * ids so callers can correlate logs.
+   * Create a delivery row for each active "submitted" webhook on this form and
+   * enqueue a BullMQ job. Returns the list of created delivery row ids so
+   * callers can correlate logs. The actual HTTP POST is handled by the webhook
+   * worker process — this method returns quickly without waiting for delivery.
    */
   async enqueueOnSubmit(input: {
     formId: string
@@ -150,14 +153,11 @@ export class WebhookService {
         select: { id: true },
       })
       ids.push(delivery.id)
-      // Dispatch off the event loop tick so we don't block the submit response.
-      setImmediate(() => {
-        void this.dispatch(delivery.id, hook.url, hook.secretHash, {
-          ...input.payload,
-          delivery_id: delivery.id,
-        }).catch(() => {
-          // Errors are logged inside dispatch; this catch is defensive.
-        })
+      await enqueueWebhookDelivery({
+        deliveryId: delivery.id,
+        webhookId: hook.id,
+        submissionId: input.submissionId,
+        attempt: 1,
       })
     }
     return ids
@@ -265,8 +265,8 @@ export class WebhookService {
 
   /**
    * Re-dispatch a previously-attempted delivery. Creates a *new*
-   * FormWebhookDelivery row (incrementing attempt counter) rather than
-   * mutating the old one.
+   * FormWebhookDelivery row (incrementing attempt counter) and enqueues a
+   * BullMQ job. The worker handles the actual HTTP POST.
    */
   async replayDelivery(deliveryId: string): Promise<{ newDeliveryId: string }> {
     const original = await this.prisma.formWebhookDelivery.findUnique({
@@ -288,19 +288,11 @@ export class WebhookService {
       select: { id: true },
     })
 
-    setImmediate(() => {
-      void this.dispatch(next.id, original.webhook.url, original.webhook.secretHash, {
-        event: 'submitted',
-        replay_of: deliveryId,
-        attempt: nextAttempt,
-        form_id: original.submission.formId,
-        version: original.submission.version,
-        submission_id: original.submission.id,
-        account_id: original.submission.accountId,
-        anonymous_token: original.submission.anonymousToken,
-        submitted_at: original.submission.submittedAt.toISOString(),
-        payload: original.submission.payloadJsonb,
-      }).catch(() => {})
+    await enqueueWebhookDelivery({
+      deliveryId: next.id,
+      webhookId: original.webhookId,
+      submissionId: original.submissionId,
+      attempt: nextAttempt,
     })
 
     return { newDeliveryId: next.id }

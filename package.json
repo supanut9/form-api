@@ -25,6 +25,7 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
+    "worker": "tsx src/workers/webhook.worker.ts",
     "e2e": "playwright test --config test/e2e/playwright.config.ts",
     "e2e:install": "playwright install chromium",
     "e2e:stub-language-api": "tsx test/e2e/stub-language-api/server.ts"

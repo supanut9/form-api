@@ -220,8 +220,8 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
         },
       })
 
-      // Dispatch webhooks (in-process, fire-and-forget — the actual fetch
-      // calls happen on the next tick via setImmediate). Failures are surfaced
+      // Enqueue webhook deliveries via BullMQ. The actual HTTP POST is handled
+      // by the webhook worker process (pnpm worker). Failures are surfaced
       // through admin's deliveries view; submitters never wait on receivers.
       const webhookService = new WebhookService(app.prisma)
       const eventKeyForHook = request.body.event_key ?? null

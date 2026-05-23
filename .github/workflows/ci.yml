@@ -1,0 +1,210 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Unit + integration job
+  # ---------------------------------------------------------------------------
+  unit:
+    name: Lint / Typecheck / Test / Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: forms
+          POSTGRES_PASSWORD: forms
+          POSTGRES_DB: form_api
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U forms"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://forms:forms@localhost:5432/form_api
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-jwt-secret-change-me-at-least-16
+      OIDC_ISSUER: http://localhost:4000
+      OIDC_CLIENT_ID: form-admin-ci
+      OIDC_CLIENT_SECRET: ci-secret
+      FORMS_OIDC_CLIENT_ID: form-admin
+      FORMS_JWT_SECRET: ci-forms-jwt-secret-32-chars-minimum!!
+      WEBHOOK_SECRETS_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      PUBLIC_FORM_WEB_URL: http://localhost:4202
+      S3_ENDPOINT: http://localhost:59010
+      S3_BUCKET: form-uploads
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: forms
+      S3_SECRET_KEY: forms-dev-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run Prisma migrations
+        run: npx prisma migrate deploy
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Playwright e2e smoke job — runs after unit, only on push/PR to main
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: Playwright E2E Smoke
+    needs: unit
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: forms
+          POSTGRES_PASSWORD: forms
+          POSTGRES_DB: form_api
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U forms"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://forms:forms@localhost:5432/form_api
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-jwt-secret-change-me-at-least-16
+      OIDC_ISSUER: http://localhost:4000
+      OIDC_CLIENT_ID: form-admin-ci
+      OIDC_CLIENT_SECRET: ci-secret
+      FORMS_OIDC_CLIENT_ID: form-admin
+      FORMS_JWT_SECRET: ci-forms-jwt-secret-32-chars-minimum!!
+      WEBHOOK_SECRETS_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      PUBLIC_FORM_WEB_URL: http://localhost:4202
+      S3_ENDPOINT: http://localhost:59010
+      S3_BUCKET: form-uploads
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: forms
+      S3_SECRET_KEY: forms-dev-secret
+      # Passed to Playwright specs so they can call admin API routes
+      E2E_ADMIN_TOKEN: ${{ secrets.E2E_ADMIN_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run Prisma migrations
+        run: npx prisma migrate deploy
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build form-api
+        run: npm run build
+
+      - name: Start form-api
+        run: node dist/server.js &
+        env:
+          PORT: 4200
+
+      # form-admin and form-web must be checked out and built separately in a
+      # real monorepo setup. In this repo-per-service layout they are started
+      # as sibling checkout steps. The e2e global-setup.ts waits up to 60 s
+      # for all three services to become reachable, so the start commands below
+      # run in background and the wait happens inside Playwright itself.
+      - name: Checkout form-admin
+        uses: actions/checkout@v4
+        with:
+          repository: supanut9/form-admin
+          path: ../form-admin
+
+      - name: Checkout form-web
+        uses: actions/checkout@v4
+        with:
+          repository: supanut9/form-web
+          path: ../form-web
+
+      - name: Install + build form-admin
+        working-directory: ../form-admin
+        run: npm ci --ignore-scripts && npm run build
+
+      - name: Install + build form-web
+        working-directory: ../form-web
+        run: npm ci --ignore-scripts && npm run build
+
+      - name: Start form-admin
+        working-directory: ../form-admin
+        run: npm start &
+
+      - name: Start form-web
+        working-directory: ../form-web
+        run: npm start &
+
+      - name: Seed e2e fixtures
+        run: npx tsx test/e2e/setup/seed-form.ts
+
+      - name: Run Playwright e2e
+        run: npm run e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: test/e2e/playwright-results/

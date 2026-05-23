@@ -6,7 +6,7 @@
  * primary operation — but in practice the table is local Postgres and ought
  * to write reliably.
  */
-import type { PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 
 export type AuditAction =
   // forms
@@ -72,7 +72,7 @@ export class AuditService {
           action: entry.action,
           subjectType: entry.subjectType,
           subjectId: entry.subjectId,
-          diffJson: (entry.diff ?? null) as object | null,
+          diffJson: (entry.diff ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         },
       })
     } catch {
