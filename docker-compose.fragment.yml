@@ -1,0 +1,37 @@
+# docker-compose.fragment.yml
+#
+# Describes only the form-api service. This fragment is a reference for L3
+# (software-engineering agent) who owns the root docker-compose.yml.
+# Do NOT add this file to the root compose directly — L3 merges it.
+#
+# Per form-plan.md §4.10:
+#   - form-postgres  → host port 55438, db "form_api"
+#   - form-minio     → host port 59010 (API) + 59011 (console)
+#   - Reuse shared redis already defined in root compose
+#   - form-api       → host port 4200
+#   - form-admin     → host port 4201
+#   - form-web       → host port 4202
+
+services:
+  form-api:
+    build:
+      context: ./form-api
+      dockerfile: Dockerfile
+    image: form-api:local
+    ports:
+      - "4200:4200"
+    environment:
+      NODE_ENV: development
+      PORT: 4200
+      HOST: 0.0.0.0
+      LOG_LEVEL: info
+      # Wave 2 vars — uncomment when Prisma schema lands (Lane L4)
+      # DATABASE_URL: postgres://forms:forms@form-postgres:5432/form_api
+      # Wave 5 vars — uncomment when BullMQ + webhooks land (Lane L13)
+      # REDIS_URL: redis://redis:6379
+    depends_on:
+      - form-postgres
+      - form-minio
+    restart: unless-stopped
+    labels:
+      org.opencontainers.image.source: "https://github.com/supanut9/form-api"

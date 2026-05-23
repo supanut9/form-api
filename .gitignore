@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+*.log
+# Keep the dir (tracked via .gitkeep), ignore runtime-written files
+var/file-storage/*
+!var/file-storage/.gitkeep
+.DS_Store

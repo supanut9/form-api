@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FormEmbed E2E Host Page</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; padding: 20px; }
+    #status { font-size: 14px; color: #555; margin-top: 12px; }
+    #messages { font-size: 12px; color: #333; margin-top: 8px; white-space: pre; }
+  </style>
+</head>
+<body>
+  <h1>FormEmbed E2E Host</h1>
+  <div id="form-container"></div>
+  <div id="status">Waiting for postMessages…</div>
+  <div id="messages"></div>
+
+  <script type="module">
+    /**
+     * This page is loaded by embed-sdk.spec.ts via page.goto('file://…').
+     * It receives a FORM_ID query param, constructs an iframe pointing to
+     * form-web /embed/<formId>, and listens for postMessages.
+     *
+     * The SDK bundle is expected at /form-sdk-bundle.js relative to the test
+     * fixture directory (built by `pnpm -F @supanut9/form-sdk build` and
+     * copied there by CI before the e2e run).
+     *
+     * postMessage contract (child → parent):
+     *   { type: 'form-resize', height: number }
+     *   { type: 'form-submit', submissionId: string, payload: object }
+     */
+
+    const params = new URLSearchParams(window.location.search);
+    const formId = params.get('form_id') ?? '';
+    const formWebBase = params.get('form_web_base') ?? 'http://localhost:4202';
+
+    // Record received messages for Playwright to inspect
+    const received = [];
+
+    window.addEventListener('message', (event) => {
+      if (!event.data || typeof event.data !== 'object') return;
+      received.push(event.data);
+      document.getElementById('messages').textContent = JSON.stringify(received, null, 2);
+      document.getElementById('status').textContent =
+        `Received ${received.length} message(s). Last type: ${event.data.type}`;
+    });
+
+    // Expose received messages array for Playwright page.evaluate()
+    window.__postMessages = received;
+
+    if (formId) {
+      const iframe = document.createElement('iframe');
+      iframe.id = 'form-iframe';
+      iframe.src = `${formWebBase}/embed/${formId}`;
+      iframe.style.width = '100%';
+      iframe.style.border = 'none';
+      iframe.style.minHeight = '400px';
+      document.getElementById('form-container').appendChild(iframe);
+    } else {
+      document.getElementById('status').textContent = 'ERROR: no form_id param';
+    }
+  </script>
+</body>
+</html>

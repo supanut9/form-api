@@ -1,0 +1,421 @@
+// Prisma schema for form-api
+// Prisma version: 7.8.0  |  Provider: postgresql
+//
+// Naming convention (mirrors cms-api):
+//   - Prisma model names: PascalCase
+//   - DB table names:     snake_case with form_ prefix via @@map
+//   - DB column names:    snake_case via @map
+//
+// In Prisma 7 the datasource url is NOT set here.
+// It is provided via prisma.config.ts (for Migrate) and via the PrismaClient
+// adapter constructor (for the client at runtime). See prisma.config.ts and
+// src/lib/prisma.ts.
+//
+// Model naming:
+//   - Form-domain models: FormDefinition, FormVersion, FormSubmission, ...
+//   - System models that mirror cms-api exactly (so Lane L5a code works):
+//     Role, Permission, AccountRole, Session, ApiToken, AuditLog, RateLimitState
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum FormType {
+  main
+  dynamic
+
+  @@map("form_type")
+}
+
+enum SubmissionSource {
+  link
+  sdk
+  iframe
+  api
+
+  @@map("submission_source")
+}
+
+enum SubmissionStatus {
+  submitted
+  processing
+  delivered
+  failed
+
+  @@map("submission_status")
+}
+
+enum ApiTokenType {
+  admin
+  webhook_caller
+  public_read
+
+  @@map("api_token_type")
+}
+
+enum WebhookDeliveryStatus {
+  pending
+  delivered
+  failed
+
+  @@map("webhook_delivery_status")
+}
+
+// ---------------------------------------------------------------------------
+// Core form tables
+// ---------------------------------------------------------------------------
+
+model FormDefinition {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  type           FormType
+  title          String
+  // slug is nullable — main forms may not have a public link
+  slug           String?   @unique
+  currentVersion Int       @map("current_version")
+  // owner_account_id is stored as text (not @db.Uuid) because auth-server
+  // accounts.id is carried as a JWT sub claim and we do not add a cross-service FK.
+  ownerAccountId String    @map("owner_account_id")
+  archivedAt     DateTime? @map("archived_at") @db.Timestamptz
+
+  versions    FormVersion[]
+  submissions FormSubmission[]
+  files       FormFile[]
+  events      FormEvent[]
+  webhooks    FormWebhook[]
+
+  @@index([slug])
+  @@index([ownerAccountId])
+  @@index([archivedAt])
+  @@map("form_definitions")
+}
+
+model FormVersion {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  formId      String    @map("form_id") @db.Uuid
+  version     Int
+  specJson    Json      @map("spec_json")
+  schemaHash  String    @map("schema_hash")
+  // nullable — drafts may not be published yet
+  publishedAt DateTime? @map("published_at") @db.Timestamptz
+  // publishedBy stores an account_id string (not a UUID FK)
+  publishedBy String?   @map("published_by")
+  isCurrent   Boolean   @default(false) @map("is_current")
+
+  form FormDefinition @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@unique([formId, version])
+  @@index([formId, isCurrent])
+  @@index([formId, version])
+  @@map("form_versions")
+}
+
+model FormSubmission {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  formId         String           @map("form_id") @db.Uuid
+  // version is denormalized for fast joins (avoids a join to form_versions)
+  version        Int
+  // account_id is a string (not @db.Uuid) — auth-server identity, no cross-service FK
+  accountId      String?          @map("account_id")
+  anonymousToken String?          @map("anonymous_token")
+  payloadJsonb   Json             @map("payload_jsonb")
+  submittedAt    DateTime         @default(now()) @map("submitted_at") @db.Timestamptz
+  ipHash         String           @map("ip_hash")
+  userAgent      String           @map("user_agent")
+  source         SubmissionSource
+  status         SubmissionStatus @default(submitted)
+  deletedAt      DateTime?        @map("deleted_at") @db.Timestamptz
+
+  form       FormDefinition        @relation(fields: [formId], references: [id], onDelete: Restrict)
+  files      FormFile[]
+  eventFills FormEventFill[]
+  deliveries FormWebhookDelivery[]
+
+  @@index([formId, status, submittedAt])
+  @@index([accountId])
+  @@index([anonymousToken])
+  @@index([formId, version])
+  @@map("form_submissions")
+}
+
+model FormFile {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  submissionId String? @map("submission_id") @db.Uuid
+  // form_id nullable per spec — file may be orphaned before submission links
+  formId       String? @map("form_id") @db.Uuid
+  // account_id is a string (not @db.Uuid) — auth-server identity
+  accountId    String? @map("account_id")
+  storageKey   String  @unique @map("storage_key")
+  mime         String
+  size         BigInt
+  sha256       String
+
+  submission FormSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  form       FormDefinition? @relation(fields: [formId], references: [id], onDelete: Restrict)
+
+  @@index([submissionId])
+  @@index([formId])
+  @@index([sha256])
+  @@map("form_files")
+}
+
+// ---------------------------------------------------------------------------
+// Event tables
+// ---------------------------------------------------------------------------
+
+model FormEvent {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  eventKey       String  @unique @map("event_key")
+  formId         String  @map("form_id") @db.Uuid
+  currentVersion Int     @map("current_version")
+  optional       Boolean @default(false)
+  description    String
+
+  form  FormDefinition  @relation(fields: [formId], references: [id], onDelete: Restrict)
+  fills FormEventFill[]
+
+  @@index([eventKey])
+  @@index([formId])
+  @@map("form_events")
+}
+
+// Prisma cannot model COALESCE in a composite PK.
+// Two @@unique constraints enforce one fill per (event_key, account_id) and
+// one fill per (event_key, anonymous_token). Uniqueness applies when both
+// columns in the pair are non-null.
+model FormEventFill {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  eventKey       String   @map("event_key")
+  // account_id is a string (not @db.Uuid) — auth-server identity
+  accountId      String?  @map("account_id")
+  anonymousToken String?  @map("anonymous_token")
+  submissionId   String   @map("submission_id") @db.Uuid
+  filledAt       DateTime @default(now()) @map("filled_at") @db.Timestamptz
+
+  event      FormEvent      @relation(fields: [eventKey], references: [eventKey], onDelete: Restrict)
+  submission FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+
+  @@unique([eventKey, accountId], name: "event_account_uniq")
+  @@unique([eventKey, anonymousToken], name: "event_token_uniq")
+  @@index([eventKey, accountId])
+  @@index([eventKey, anonymousToken])
+  @@map("form_event_fills")
+}
+
+// ---------------------------------------------------------------------------
+// Webhook tables
+// ---------------------------------------------------------------------------
+
+model FormWebhook {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  formId         String    @map("form_id") @db.Uuid
+  url            String
+  secretHash     String    @map("secret_hash")
+  // native Postgres text[] for webhook event names (submitted | verified | failed)
+  events         String[]
+  active         Boolean   @default(true)
+  lastDeliveryAt DateTime? @map("last_delivery_at") @db.Timestamptz
+
+  form       FormDefinition        @relation(fields: [formId], references: [id], onDelete: Cascade)
+  deliveries FormWebhookDelivery[]
+
+  @@index([formId, active])
+  @@map("form_webhooks")
+}
+
+model FormWebhookDelivery {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  webhookId           String                @map("webhook_id") @db.Uuid
+  submissionId        String                @map("submission_id") @db.Uuid
+  attempt             Int
+  status              WebhookDeliveryStatus @default(pending)
+  responseCode        Int?                  @map("response_code")
+  responseBodyExcerpt String?               @map("response_body_excerpt") @db.VarChar(1024)
+  scheduledAt         DateTime              @map("scheduled_at") @db.Timestamptz
+
+  webhook    FormWebhook    @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  submission FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+
+  @@index([webhookId, status])
+  @@index([scheduledAt])
+  @@map("form_webhook_deliveries")
+}
+
+// ---------------------------------------------------------------------------
+// RBAC — mirrors cms-api shape exactly
+// Models named Role / Permission / AccountRole (no Form prefix) so that
+// Lane L5a session-service.ts can use prisma.role / prisma.accountRole / etc.
+// DB tables remain form_role / form_permission / form_account_role.
+// ---------------------------------------------------------------------------
+
+model Role {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  name        String  @unique
+  description String
+  isSystem    Boolean @map("is_system")
+
+  permissions  Permission[]
+  accountRoles AccountRole[]
+
+  @@map("form_role")
+}
+
+// Each row is one (action, subject) permission grant for a role.
+// Mirrors cms-api Permission model (not a join-table pattern).
+model Permission {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  roleId String @map("role_id") @db.Uuid
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  action         String
+  subject        String
+  conditionsJson Json?  @map("conditions_json")
+
+  @@index([roleId])
+  @@map("form_permission")
+}
+
+model AccountRole {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // account_id is a string (not @db.Uuid) — identity lives in auth-server.
+  // We intentionally do not add a DB-level FK to a cross-service table.
+  accountId String @map("account_id")
+  roleId    String @map("role_id") @db.Uuid
+  role      Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  scopeJson Json?    @map("scope_json")
+  grantedBy String   @map("granted_by")
+  grantedAt DateTime @map("granted_at") @db.Timestamptz
+
+  @@unique([accountId, roleId])
+  @@index([accountId])
+  @@index([roleId])
+  @@map("form_account_role")
+}
+
+// ---------------------------------------------------------------------------
+// Sessions — refresh-token persistence for admin OIDC (Lane L5a)
+// Model named Session (no Form prefix) so L5a can use prisma.session.
+// DB table is form_session.
+// ---------------------------------------------------------------------------
+
+model Session {
+  // id is an opaque refresh-token identifier (not a UUID); stored as text.
+  id        String   @id
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  accountId String    @map("account_id")
+  issuedAt  DateTime  @map("issued_at") @db.Timestamptz
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+  userAgent String    @map("user_agent")
+  ipHash    String    @map("ip_hash")
+
+  @@index([accountId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("form_session")
+}
+
+// ---------------------------------------------------------------------------
+// API Tokens — model named ApiToken so L5a can use prisma.apiToken
+// ---------------------------------------------------------------------------
+
+model ApiToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  name       String
+  tokenHash  String       @unique @map("token_hash")
+  type       ApiTokenType
+  scopesJson Json         @map("scopes_json")
+  expiresAt  DateTime?    @map("expires_at") @db.Timestamptz
+  revokedAt  DateTime?    @map("revoked_at") @db.Timestamptz
+
+  @@index([tokenHash])
+  @@index([revokedAt])
+  @@map("form_api_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Audit log — append-only; intentionally omits updatedAt
+// Model named AuditLog (no Form prefix) for consistency with cms-api.
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  actorAccountId String?  @map("actor_account_id")
+  action         String
+  subjectType    String   @map("subject_type")
+  subjectId      String   @map("subject_id")
+  diffJson       Json?    @map("diff_json")
+  at             DateTime @default(now()) @db.Timestamptz
+
+  @@index([actorAccountId])
+  @@index([subjectType, subjectId])
+  @@index([at])
+  @@map("form_audit_log")
+}
+
+// ---------------------------------------------------------------------------
+// Rate-limit state
+// Synthetic id PK + @@unique on (key, window_started_at).
+// ---------------------------------------------------------------------------
+
+model RateLimitState {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  key             String   @map("key")
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz
+  count           Int      @default(0)
+
+  @@unique([key, windowStartedAt])
+  @@index([key])
+  @@map("form_rate_limit_state")
+}
