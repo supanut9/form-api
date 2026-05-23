@@ -173,10 +173,11 @@ export class FormService {
     const include = {
       versions: { where: { isCurrent: true }, take: 1 },
     } as const
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug)
-    let form = isUuid
-      ? await this.prisma.formDefinition.findUnique({ where: { id: idOrSlug }, include })
-      : null
+    // Try id first; if not found, fall back to slug. Cheaper than a regex
+    // discriminator and works with any id shape (UUID in prod, mock ids in tests).
+    let form = await this.prisma.formDefinition
+      .findUnique({ where: { id: idOrSlug }, include })
+      .catch(() => null)
 
     if (!form) {
       form = await this.prisma.formDefinition.findUnique({

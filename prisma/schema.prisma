@@ -263,6 +263,7 @@ model FormWebhookDelivery {
   responseCode        Int?                  @map("response_code")
   responseBodyExcerpt String?               @map("response_body_excerpt") @db.VarChar(1024)
   scheduledAt         DateTime              @map("scheduled_at") @db.Timestamptz
+  deliveredAt         DateTime?             @map("delivered_at") @db.Timestamptz
 
   webhook    FormWebhook    @relation(fields: [webhookId], references: [id], onDelete: Cascade)
   submission FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Restrict)

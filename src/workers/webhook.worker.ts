@@ -136,6 +136,7 @@ async function processDelivery(job: Job<WebhookDeliveryJob>): Promise<void> {
   const isLastAttempt = job.attemptsMade >= (job.opts.attempts ?? 1) - 1
 
   if (ok) {
+    const now = new Date()
     await prisma.$transaction([
       prisma.formWebhookDelivery.update({
         where: { id: deliveryId },
@@ -143,11 +144,12 @@ async function processDelivery(job: Job<WebhookDeliveryJob>): Promise<void> {
           status: 'delivered',
           responseCode: code,
           responseBodyExcerpt: bodyText,
+          deliveredAt: now,
         },
       }),
       prisma.formWebhook.update({
         where: { id: webhook.id },
-        data: { lastDeliveryAt: new Date() },
+        data: { lastDeliveryAt: now },
       }),
     ])
   } else {
