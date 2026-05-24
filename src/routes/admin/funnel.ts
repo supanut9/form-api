@@ -2,18 +2,20 @@
  * Admin funnel read routes.
  *
  *   GET /v1/admin/forms/:formIdOrSlug/funnel?from=&to=&version=
- *     → FunnelService.getFormFunnel
- *
  *   GET /v1/admin/forms/:formIdOrSlug/funnel/daily?from=&to=&event_name=
- *     → FunnelService.getDailyCounts
+ *   GET /v1/admin/workspaces/me/drain-state
  *
- * Both routes require authenticate + requirePermission('read', 'Form').
+ * The first two routes pick a backend via FunnelReaderFactory:
+ *   - Postgres FunnelService for free/starter/pro workspaces (default).
+ *   - ClickHouse FunnelReaderClickHouse for business workspaces when
+ *     CLICKHOUSE_URL is set.  Falls back to Postgres if env is unset.
  */
 import { z } from 'zod'
 import type { FastifyPluginAsync } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { requirePermission } from '../../core/auth/rbac.js'
-import { FunnelService } from '../../core/analytics/funnel.service.js'
+import { createFunnelReader } from '../../core/analytics/funnel.factory.js'
+import { getClickHouse } from '../../lib/clickhouse.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -75,8 +77,12 @@ export const funnelAdminRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const { from, to, version } = request.query
-      const service = new FunnelService(app.prisma)
-      const result = await service.getFormFunnel(formDef.id, {
+      const reader = await createFunnelReader(
+        app.prisma,
+        getClickHouse,
+        formDef.workspaceId ?? null,
+      )
+      const result = await reader.getFormFunnel(formDef.id, {
         from: new Date(from),
         to:   new Date(to),
         version: version ?? null,
@@ -110,14 +116,48 @@ export const funnelAdminRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const { from, to, event_name } = request.query
-      const service = new FunnelService(app.prisma)
-      const rows = await service.getDailyCounts(formDef.id, {
+      const reader = await createFunnelReader(
+        app.prisma,
+        getClickHouse,
+        formDef.workspaceId ?? null,
+      )
+      const rows = await reader.getDailyCounts(formDef.id, {
         from: new Date(from),
         to:   new Date(to),
         eventName: event_name ?? null,
       })
 
       return reply.send(rows)
+    },
+  )
+
+  // ── GET /v1/admin/workspaces/me/drain-state ───────────────────────────────
+  // Returns the drain state for the caller's current workspace, or null if
+  // the drain has never run. Useful for "Last synced N hours ago" in the UI.
+  app.get(
+    '/v1/admin/workspaces/me/drain-state',
+    {
+      preHandler: [fastify.authenticate, requirePermission('read', 'Form')],
+      schema: {
+        tags: ['admin', 'analytics'],
+      },
+    },
+    async (request, reply) => {
+      // The workspace is resolved from the request context (set by workspace-scope plugin).
+      // If there is no workspace context fall back to the first workspace the user owns.
+      const workspaceId: string | undefined =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (request as any).workspaceId as string | undefined
+
+      if (!workspaceId) {
+        return reply.send(null)
+      }
+
+      const state = await app.prisma.workspaceDrainState.findUnique({
+        where: { workspaceId },
+      })
+
+      return reply.send(state ?? null)
     },
   )
 }

@@ -57,6 +57,27 @@ const envSchema = z.object({
   SENTRY_DSN: z.string().url().optional(),
 
   // ---------------------------------------------------------------------------
+  // Phase 3C L22 — ClickHouse analytics drain (optional; service boots without these)
+  // ---------------------------------------------------------------------------
+  CLICKHOUSE_URL: z.string().url().optional(),
+  CLICKHOUSE_USERNAME: z.string().optional(),
+  CLICKHOUSE_PASSWORD: z.string().optional(),
+  CLICKHOUSE_DATABASE: z.string().optional(),
+
+  // Set to 'true' to start the nightly Postgres→ClickHouse drain cron.
+  ENABLE_ANALYTICS_DRAIN: z
+    .union([z.literal('true'), z.literal('false')])
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  // Set to 'true' to DELETE source Postgres rows after a successful CH insert.
+  // Defaults to false so first drain runs are non-destructive.
+  DRAIN_DELETE_SOURCE: z
+    .union([z.literal('true'), z.literal('false')])
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  // ---------------------------------------------------------------------------
   // Phase 3B — Stripe payment integration (optional; service boots without these)
   // ---------------------------------------------------------------------------
   STRIPE_SECRET_KEY: z.string().optional(),

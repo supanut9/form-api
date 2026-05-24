@@ -28,6 +28,13 @@ datasource db {
 // Enums
 // ---------------------------------------------------------------------------
 
+enum AnalyticsBackend {
+  postgres
+  clickhouse
+
+  @@map("analytics_backend")
+}
+
 enum WorkspaceRole {
   owner
   admin
@@ -112,10 +119,10 @@ model FormDefinition {
   // accounts.id is carried as a JWT sub claim and we do not add a cross-service FK.
   ownerAccountId String    @map("owner_account_id")
   archivedAt     DateTime? @map("archived_at") @db.Timestamptz
-  // workspaceId is nullable until Phase 3C.3 NOT NULL migration
-  workspaceId    String?   @map("workspace_id") @db.Uuid
+  // workspaceId nullable until Phase 3C.3 NOT NULL flip (see plan §10 risk #6)
+  workspaceId    String?  @map("workspace_id") @db.Uuid
 
-  workspace    Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  workspace    Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   versions     FormVersion[]
   submissions  FormSubmission[]
   files        FormFile[]
@@ -276,8 +283,8 @@ model FormWebhook {
   events         String[]
   active         Boolean   @default(true)
   lastDeliveryAt DateTime? @map("last_delivery_at") @db.Timestamptz
-  // workspaceId is nullable until Phase 3C.3 NOT NULL migration
-  workspaceId    String?   @map("workspace_id") @db.Uuid
+  // workspaceId nullable until Phase 3C.3 NOT NULL flip (see plan §10 risk #6)
+  workspaceId    String?  @map("workspace_id") @db.Uuid
 
   workspace  Workspace?            @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   form       FormDefinition        @relation(fields: [formId], references: [id], onDelete: Cascade)
@@ -411,8 +418,8 @@ model ApiToken {
   scopesJson Json         @map("scopes_json")
   expiresAt  DateTime?    @map("expires_at") @db.Timestamptz
   revokedAt  DateTime?    @map("revoked_at") @db.Timestamptz
-  // workspaceId is nullable until Phase 3C.3 NOT NULL migration
-  workspaceId String?     @map("workspace_id") @db.Uuid
+  // workspaceId nullable until Phase 3C.3 NOT NULL flip
+  workspaceId String?    @map("workspace_id") @db.Uuid
 
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
 
@@ -437,8 +444,8 @@ model AuditLog {
   subjectId      String   @map("subject_id")
   diffJson       Json?    @map("diff_json")
   at             DateTime @default(now()) @db.Timestamptz
-  // workspaceId is nullable until Phase 3C.3 NOT NULL migration
-  workspaceId    String?  @map("workspace_id") @db.Uuid
+  // workspaceId nullable until Phase 3C.3 NOT NULL flip
+  workspaceId    String? @map("workspace_id") @db.Uuid
 
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
 
@@ -455,7 +462,7 @@ model AuditLog {
 
 model FormTemplate {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId   String?  @map("workspace_id") @db.Uuid // null until 3C ships
+  workspaceId   String?  @map("workspace_id") @db.Uuid // nullable until 3C.3 NOT NULL flip
   slug          String   @unique
   title         String
   description   String?
@@ -646,10 +653,11 @@ model WorkspacePlan {
   monthlySubmissionQuota Int      @map("monthly_submission_quota")
   maxForms               Int      @map("max_forms")
   maxFileSizeMb          Int      @map("max_file_size_mb")
-  paymentsEnabled        Boolean  @default(false) @map("payments_enabled")
-  experimentsEnabled     Boolean  @default(false) @map("experiments_enabled")
-  analyticsRetentionDays Int      @map("analytics_retention_days")
-  stripePriceId          String?  @map("stripe_price_id")
+  paymentsEnabled        Boolean          @default(false) @map("payments_enabled")
+  experimentsEnabled     Boolean          @default(false) @map("experiments_enabled")
+  analyticsRetentionDays Int              @map("analytics_retention_days")
+  stripePriceId          String?          @map("stripe_price_id")
+  analyticsBackend       AnalyticsBackend @default(postgres) @map("analytics_backend")
 
   workspaces Workspace[]
 
@@ -677,6 +685,7 @@ model Workspace {
   apiTokens     ApiToken[]
   auditLogs     AuditLog[]
   billingEvents WorkspaceBillingEvent[]
+  drainState    WorkspaceDrainState?
 
   @@index([planId])
   @@index([createdByAccountId])
@@ -732,4 +741,21 @@ model WorkspaceInvitation {
   @@index([workspaceId])
   @@index([email])
   @@map("workspace_invitations")
+}
+
+// ---------------------------------------------------------------------------
+// Analytics drain state (Phase 3C – L22)
+// Tracks the per-workspace nightly Postgres→ClickHouse drain progress.
+// ---------------------------------------------------------------------------
+
+model WorkspaceDrainState {
+  workspaceId      String    @id @map("workspace_id") @db.Uuid
+  lastDrainedAt    DateTime? @map("last_drained_at") @db.Timestamptz
+  totalRowsDrained BigInt    @default(0) @map("total_rows_drained")
+  lastError        String?   @map("last_error")
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("workspace_drain_states")
 }
