@@ -17,6 +17,8 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { FormService } from '../../core/forms/form.service.js'
 import { ExperimentService } from '../../core/experiments/experiment.service.js'
 import { ANON_COOKIE, ANON_COOKIE_MAX_AGE } from '../../core/analytics/anonymous-token.js'
+import { PlanService } from '../../core/workspaces/plan.service.js'
+import { getRedisConnection } from '../../queues/connection.js'
 
 const paramsSchema = z.object({ slug: z.string().min(1) })
 
@@ -99,6 +101,38 @@ export const renderSpecPublicRoutes: FastifyPluginAsync = async (fastify) => {
         request.log.warn({ err }, '[render-spec] experiment resolution failed; using default spec')
       }
 
+      // ── Phase 3C: feature gates ─────────────────────────────────────────────
+      // If the form has a workspaceId (added by L17), load the plan's feature
+      // gates and include them in the response so the renderer can conditionally
+      // show payment / experiment blocks. Falls back to permissive defaults so
+      // existing unscoped forms render unaffected.
+      let features: {
+        payments_enabled: boolean
+        experiments_enabled: boolean
+        max_file_size_mb: number
+      } = {
+        payments_enabled: true,
+        experiments_enabled: true,
+        max_file_size_mb: 50,
+      }
+
+      const formWorkspaceId: string | null = (form as any).workspaceId ?? null
+      if (formWorkspaceId) {
+        try {
+          const planService = new PlanService(app.prisma, getRedisConnection())
+          const gates = await planService.getFeatureGates(formWorkspaceId)
+          features = {
+            payments_enabled: gates.payments_enabled,
+            experiments_enabled: gates.experiments_enabled,
+            max_file_size_mb: gates.max_file_size_mb,
+          }
+        } catch (err) {
+          request.log.warn({ err }, '[render-spec] feature-gate load failed; using permissive defaults')
+        }
+      }
+
+      // Backward-compatible: existing callers that destructure { spec } or the
+      // flat top-level fields continue to work. `features` is purely additive.
       return {
         id: form.id,
         slug: form.slug,
@@ -107,6 +141,7 @@ export const renderSpecPublicRoutes: FastifyPluginAsync = async (fastify) => {
         current_version: form.currentVersion,
         spec_json: version.specJson,
         schema_hash: version.schemaHash,
+        features,
       }
     },
   )

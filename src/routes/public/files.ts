@@ -10,6 +10,8 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { FileService } from '../../core/files/file.service.js'
 import { FormService } from '../../core/forms/form.service.js'
 import { formSpecSchema } from '../../core/forms/types.js'
+import { PlanService } from '../../core/workspaces/plan.service.js'
+import { getRedisConnection } from '../../queues/connection.js'
 
 const presignBodySchema = z.object({
   filename: z.string().min(1).max(255),
@@ -65,6 +67,20 @@ export const filesPublicRoutes: FastifyPluginAsync = async (fastify) => {
                 if (v?.allowed_mime_types?.length) allowedMimes = v.allowed_mime_types
               }
             }
+          }
+        }
+
+        // ── Phase 3C: cap max_size by the workspace plan's maxFileSizeMb ────
+        // If the form is workspace-scoped, clamp to min(spec limit, plan limit).
+        const formWorkspaceId: string | null = (form as any).workspaceId ?? null
+        if (formWorkspaceId) {
+          try {
+            const planService = new PlanService(app.prisma, getRedisConnection())
+            const gates = await planService.getFeatureGates(formWorkspaceId)
+            const planMaxBytes = gates.max_file_size_mb * 1024 * 1024
+            maxSize = maxSize !== undefined ? Math.min(maxSize, planMaxBytes) : planMaxBytes
+          } catch {
+            // Non-fatal — fall through to spec limit or default
           }
         }
       }

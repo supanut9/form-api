@@ -28,6 +28,15 @@ datasource db {
 // Enums
 // ---------------------------------------------------------------------------
 
+enum WorkspaceRole {
+  owner
+  admin
+  editor
+  viewer
+
+  @@map("workspace_role")
+}
+
 enum ExperimentStatus {
   draft
   running
@@ -103,7 +112,10 @@ model FormDefinition {
   // accounts.id is carried as a JWT sub claim and we do not add a cross-service FK.
   ownerAccountId String    @map("owner_account_id")
   archivedAt     DateTime? @map("archived_at") @db.Timestamptz
+  // workspaceId is nullable until Phase 3C.3 NOT NULL migration
+  workspaceId    String?   @map("workspace_id") @db.Uuid
 
+  workspace    Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   versions     FormVersion[]
   submissions  FormSubmission[]
   files        FormFile[]
@@ -115,6 +127,7 @@ model FormDefinition {
   @@index([slug])
   @@index([ownerAccountId])
   @@index([archivedAt])
+  @@index([workspaceId])
   @@map("form_definitions")
 }
 
@@ -263,11 +276,15 @@ model FormWebhook {
   events         String[]
   active         Boolean   @default(true)
   lastDeliveryAt DateTime? @map("last_delivery_at") @db.Timestamptz
+  // workspaceId is nullable until Phase 3C.3 NOT NULL migration
+  workspaceId    String?   @map("workspace_id") @db.Uuid
 
+  workspace  Workspace?            @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   form       FormDefinition        @relation(fields: [formId], references: [id], onDelete: Cascade)
   deliveries FormWebhookDelivery[]
 
   @@index([formId, active])
+  @@index([workspaceId])
   @@map("form_webhooks")
 }
 
@@ -394,9 +411,14 @@ model ApiToken {
   scopesJson Json         @map("scopes_json")
   expiresAt  DateTime?    @map("expires_at") @db.Timestamptz
   revokedAt  DateTime?    @map("revoked_at") @db.Timestamptz
+  // workspaceId is nullable until Phase 3C.3 NOT NULL migration
+  workspaceId String?     @map("workspace_id") @db.Uuid
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
 
   @@index([tokenHash])
   @@index([revokedAt])
+  @@index([workspaceId])
   @@map("form_api_tokens")
 }
 
@@ -415,10 +437,15 @@ model AuditLog {
   subjectId      String   @map("subject_id")
   diffJson       Json?    @map("diff_json")
   at             DateTime @default(now()) @db.Timestamptz
+  // workspaceId is nullable until Phase 3C.3 NOT NULL migration
+  workspaceId    String?  @map("workspace_id") @db.Uuid
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
 
   @@index([actorAccountId])
   @@index([subjectType, subjectId])
   @@index([at])
+  @@index([workspaceId])
   @@map("form_audit_log")
 }
 
@@ -438,9 +465,11 @@ model FormTemplate {
   createdBy     String?  @map("created_by") @db.Uuid
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  uses FormTemplateUse[]
+  workspace Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  uses      FormTemplateUse[]
 
   @@index([category, featuredOrder])
+  @@index([workspaceId])
   @@map("form_templates")
 }
 
@@ -602,4 +631,85 @@ model RateLimitState {
   @@unique([key, windowStartedAt])
   @@index([key])
   @@map("form_rate_limit_state")
+}
+
+// ---------------------------------------------------------------------------
+// Workspace tables (Phase 3C – L17)
+// ---------------------------------------------------------------------------
+
+model WorkspacePlan {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  slug                   String   @unique
+  name                   String
+  monthlySubmissionQuota Int      @map("monthly_submission_quota")
+  maxForms               Int      @map("max_forms")
+  maxFileSizeMb          Int      @map("max_file_size_mb")
+  paymentsEnabled        Boolean  @default(false) @map("payments_enabled")
+  experimentsEnabled     Boolean  @default(false) @map("experiments_enabled")
+  analyticsRetentionDays Int      @map("analytics_retention_days")
+  stripePriceId          String?  @map("stripe_price_id")
+
+  workspaces Workspace[]
+
+  @@map("workspace_plans")
+}
+
+model Workspace {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  slug               String    @unique
+  name               String
+  planId             String    @map("plan_id") @db.Uuid
+  stripeCustomerId   String?   @unique @map("stripe_customer_id")
+  createdByAccountId String    @map("created_by_account_id")
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz
+
+  plan        WorkspacePlan         @relation(fields: [planId], references: [id], onDelete: Restrict)
+  members     WorkspaceMember[]
+  invitations WorkspaceInvitation[]
+  forms       FormDefinition[]
+  templates   FormTemplate[]
+  webhooks    FormWebhook[]
+  apiTokens   ApiToken[]
+  auditLogs   AuditLog[]
+
+  @@index([planId])
+  @@index([createdByAccountId])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  workspaceId String        @map("workspace_id") @db.Uuid
+  accountId   String        @map("account_id")
+  role        WorkspaceRole
+  invitedAt   DateTime      @default(now()) @map("invited_at") @db.Timestamptz
+  joinedAt    DateTime?     @map("joined_at") @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, accountId])
+  @@index([accountId])
+  @@map("workspace_members")
+}
+
+model WorkspaceInvitation {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  workspaceId String        @map("workspace_id") @db.Uuid
+  email       String
+  role        WorkspaceRole
+  tokenHash   String        @unique @map("token_hash")
+  expiresAt   DateTime      @map("expires_at") @db.Timestamptz
+  acceptedAt  DateTime?     @map("accepted_at") @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([email])
+  @@map("workspace_invitations")
 }

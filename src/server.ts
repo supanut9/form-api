@@ -16,6 +16,7 @@ import { z } from "zod";
 
 import prismaPlugin from "./plugins/prisma.plugin.js";
 import authSessionPlugin from "./plugins/auth.js";
+import workspaceScopePlugin from "./plugins/workspace-scope.js";
 import { adminSessionRoutes } from "./routes/admin/session.js";
 import { formsAdminRoutes } from "./routes/admin/forms.js";
 import { versionsAdminRoutes } from "./routes/admin/versions.js";
@@ -36,6 +37,7 @@ import { prefillPublicRoutes } from "./routes/public/prefill.js";
 import { templatesAdminRoutes } from "./routes/admin/templates.js";
 import { paymentsAdminRoutes } from "./routes/admin/payments.js";
 import { experimentsAdminRoutes } from "./routes/admin/experiments.js";
+import { plansAdminRoutes } from "./routes/admin/plans.js";
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -99,6 +101,8 @@ export async function buildServer() {
 
   await app.register(prismaPlugin);
   await app.register(authSessionPlugin);
+  // Phase 3C – L17: workspace scope middleware (AFTER auth, BEFORE admin routes)
+  await app.register(workspaceScopePlugin);
 
   // ---------------------------------------------------------------------------
   // Routes
@@ -160,6 +164,7 @@ export async function buildServer() {
   await app.register(prefillPublicRoutes);
   await app.register(paymentsAdminRoutes);
   await app.register(experimentsAdminRoutes);
+  await app.register(plansAdminRoutes);
 
   // ---------------------------------------------------------------------------
   // Global error handler — uniform { error: { code, message } } envelope

@@ -45,6 +45,11 @@ export type AuditAction =
   | 'role.delete'
   | 'role.grant'
   | 'role.revoke'
+  // workspaces (Phase 3C)
+  | 'workspace.created'
+  | 'workspace.member_added'
+  | 'workspace.invitation_sent'
+  | 'workspace.invitation_accepted'
 
 export type AuditSubject =
   | 'Form'
@@ -57,6 +62,7 @@ export type AuditSubject =
   | 'ApiToken'
   | 'Role'
   | 'AccountRole'
+  | 'Workspace'
 
 export interface AuditEntryInput {
   /** Authenticated account.sub when known; null for system actions. */

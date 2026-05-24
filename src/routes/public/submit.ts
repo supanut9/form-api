@@ -19,6 +19,8 @@ import { stripSkippedFields } from '../../core/submissions/payload.validator.js'
 import { PaymentService } from '../../core/payments/payment.service.js'
 import { hashIp } from '../../core/utils/hash.js'
 import { ANON_COOKIE, ANON_COOKIE_MAX_AGE } from '../../core/analytics/anonymous-token.js'
+import { PlanService } from '../../core/workspaces/plan.service.js'
+import { getRedisConnection } from '../../queues/connection.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isUuid = (s: string) => UUID_RE.test(s)
@@ -144,6 +146,22 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
       const knownOnly: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(request.body.payload)) {
         if (fieldIds.has(k)) knownOnly[k] = v
+      }
+
+      // ── Phase 3C: workspace submission quota gate ───────────────────────────
+      // form.workspaceId is added by L17 migration. For current rows (NULL) skip.
+      const formWorkspaceId: string | null = (form as any).workspaceId ?? null
+      if (formWorkspaceId) {
+        const planService = new PlanService(app.prisma, getRedisConnection())
+        try {
+          await planService.assertCanAcceptSubmission(formWorkspaceId)
+        } catch (err) {
+          const e = err as Error & { code?: string; details?: Record<string, unknown> }
+          if (e.code === 'quota_exhausted') {
+            return reply.status(429).send({ error: { code: e.code, message: e.message, details: e.details } })
+          }
+          throw err
+        }
       }
 
       // ── Phase 3B: payment gate ──────────────────────────────────────────────
@@ -371,6 +389,17 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
         .catch((err) => {
           fastify.log.warn({ err }, 'funnel submit_ok emit failed (non-fatal)')
         })
+
+      // ── Phase 3C: record submission against rolling quota ───────────────────
+      // Called AFTER all writes succeed (payment, file links, webhooks).
+      // Fire-and-forget — quota count failures must never block the response.
+      if (formWorkspaceId) {
+        new PlanService(app.prisma, getRedisConnection())
+          .recordSubmission(formWorkspaceId)
+          .catch((err) => {
+            fastify.log.warn({ err }, 'quota recordSubmission failed (non-fatal)')
+          })
+      }
 
       // Resolve redirect: spec.thank_you.redirect_url_template overrides
       // {return_url} and {event_key} placeholders when provided by caller.

@@ -6,6 +6,8 @@ import { AuditService } from '../../core/audit/audit.service.js'
 import { VersionService } from '../../core/forms/version.service.js'
 import { requirePermission } from '../../core/auth/rbac.js'
 import { FormSpecValidationError } from '../../core/forms/spec.validator.js'
+import { PlanService } from '../../core/workspaces/plan.service.js'
+import { getRedisConnection } from '../../queues/connection.js'
 
 // ── Request / response schemas ────────────────────────────────────────────────
 
@@ -62,6 +64,23 @@ export const formsAdminRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const actorSub = request.session!.sub
+
+      // ── Plan gate: max_forms ──────────────────────────────────────────────
+      // Only enforced when the request carries a workspace context (L17).
+      // Legacy / uncontexted requests skip the gate silently.
+      const workspaceId = (request as any).workspaceId as string | undefined
+      if (workspaceId) {
+        const planService = new PlanService(fastify.prisma, getRedisConnection())
+        try {
+          await planService.assertCanCreateForm(workspaceId)
+        } catch (err) {
+          const e = err as Error & { code?: string; details?: Record<string, unknown> }
+          if (e.code === 'plan_cap_exceeded') {
+            return reply.status(403).send({ error: { code: e.code, message: e.message, details: e.details } })
+          }
+          throw err
+        }
+      }
 
       const formService = new FormService(fastify.prisma)
       const versionService = new VersionService(fastify.prisma)

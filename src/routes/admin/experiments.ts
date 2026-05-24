@@ -23,6 +23,8 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { requirePermission } from '../../core/auth/rbac.js'
 import { ExperimentService } from '../../core/experiments/experiment.service.js'
 import { FormService } from '../../core/forms/form.service.js'
+import { PlanService } from '../../core/workspaces/plan.service.js'
+import { getRedisConnection } from '../../queues/connection.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -132,6 +134,14 @@ export const experimentsAdminRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const formService = new FormService(app.prisma)
         const formId = await resolveFormId(request.params.formIdOrSlug, formService)
+
+        // ── Phase 3C: plan gate — experiments_enabled ──────────────────────
+        const workspaceId = (request as any).workspaceId as string | undefined
+        if (workspaceId) {
+          const planService = new PlanService(app.prisma, getRedisConnection())
+          await planService.assertExperimentsEnabled(workspaceId)
+        }
+
         const service = new ExperimentService(app.prisma)
         const experiment = await service.createExperiment({
           formId,

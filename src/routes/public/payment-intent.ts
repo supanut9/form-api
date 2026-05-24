@@ -13,6 +13,8 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { FormService } from '../../core/forms/form.service.js'
 import { PaymentService } from '../../core/payments/payment.service.js'
 import { formSpecSchema } from '../../core/forms/types.js'
+import { PlanService } from '../../core/workspaces/plan.service.js'
+import { getRedisConnection } from '../../queues/connection.js'
 
 const paramsSchema = z.object({ slug: z.string().min(1) })
 const bodySchema = z.object({}).passthrough()
@@ -69,6 +71,21 @@ export const paymentIntentPublicRoutes: FastifyPluginAsync = async (fastify) => 
             message: 'This form does not have a payment configuration',
           },
         })
+      }
+
+      // ── Phase 3C: plan gate — payments_enabled ───────────────────────────
+      const formWorkspaceId: string | null = (form as any).workspaceId ?? null
+      if (formWorkspaceId) {
+        const planService = new PlanService(app.prisma, getRedisConnection())
+        try {
+          await planService.assertPaymentsEnabled(formWorkspaceId)
+        } catch (err) {
+          const e = err as Error & { code?: string; details?: Record<string, unknown> }
+          if (e.code === 'feature_not_in_plan') {
+            return reply.status(403).send({ error: { code: e.code, message: e.message, details: e.details } })
+          }
+          throw err
+        }
       }
 
       if (spec.payment.mode !== 'fixed') {
