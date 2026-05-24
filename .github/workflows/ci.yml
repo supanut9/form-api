@@ -79,6 +79,12 @@ jobs:
         run: npm run typecheck
 
       - name: Unit + integration tests
+        # Runs unit tests + integration tests (INTEGRATION_TESTS=true is set above).
+        # NOTE: STRIPE_CLI_TEST is intentionally NOT set here.
+        # To manually run the Stripe CLI e2e smoke test locally:
+        #   1. stripe listen --forward-to http://localhost:4200/v1/internal/stripe/webhook
+        #   2. Copy the printed whsec_... secret into STRIPE_WEBHOOK_SECRET in .env
+        #   3. STRIPE_CLI_TEST=true npx playwright test test/e2e/payment-stripe-cli.spec.ts
         run: npm test
 
       - name: Build
