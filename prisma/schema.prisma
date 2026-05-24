@@ -668,18 +668,38 @@ model Workspace {
   createdByAccountId String    @map("created_by_account_id")
   archivedAt         DateTime? @map("archived_at") @db.Timestamptz
 
-  plan        WorkspacePlan         @relation(fields: [planId], references: [id], onDelete: Restrict)
-  members     WorkspaceMember[]
-  invitations WorkspaceInvitation[]
-  forms       FormDefinition[]
-  templates   FormTemplate[]
-  webhooks    FormWebhook[]
-  apiTokens   ApiToken[]
-  auditLogs   AuditLog[]
+  plan          WorkspacePlan            @relation(fields: [planId], references: [id], onDelete: Restrict)
+  members       WorkspaceMember[]
+  invitations   WorkspaceInvitation[]
+  forms         FormDefinition[]
+  templates     FormTemplate[]
+  webhooks      FormWebhook[]
+  apiTokens     ApiToken[]
+  auditLogs     AuditLog[]
+  billingEvents WorkspaceBillingEvent[]
 
   @@index([planId])
   @@index([createdByAccountId])
   @@map("workspaces")
+}
+
+// ---------------------------------------------------------------------------
+// Workspace billing event log (Phase 3C – L19)
+// Idempotency table for Stripe subscription + invoice webhook events.
+// ---------------------------------------------------------------------------
+
+model WorkspaceBillingEvent {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  stripeEventId String   @unique @map("stripe_event_id")
+  eventType     String   @map("event_type")
+  payloadDigest String   @map("payload_digest") // sha256 of the JSON body for debugging
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("workspace_billing_events")
 }
 
 model WorkspaceMember {

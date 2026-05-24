@@ -50,6 +50,8 @@ export type AuditAction =
   | 'workspace.member_added'
   | 'workspace.invitation_sent'
   | 'workspace.invitation_accepted'
+  // billing (Phase 3C – L19)
+  | 'workspace.plan_changed'
 
 export type AuditSubject =
   | 'Form'

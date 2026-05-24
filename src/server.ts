@@ -37,7 +37,9 @@ import { prefillPublicRoutes } from "./routes/public/prefill.js";
 import { templatesAdminRoutes } from "./routes/admin/templates.js";
 import { paymentsAdminRoutes } from "./routes/admin/payments.js";
 import { experimentsAdminRoutes } from "./routes/admin/experiments.js";
-import { plansAdminRoutes } from "./routes/admin/plans.js";
+import { plansAdminRoutes } from "./routes/admin/plans.js"
+import { billingAdminRoutes } from "./routes/admin/billing.js"
+import { stripeWebhookInternalRoutes } from "./routes/internal/stripe-webhook.js";
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -165,6 +167,8 @@ export async function buildServer() {
   await app.register(paymentsAdminRoutes);
   await app.register(experimentsAdminRoutes);
   await app.register(plansAdminRoutes);
+  await app.register(billingAdminRoutes);
+  await app.register(stripeWebhookInternalRoutes);
 
   // ---------------------------------------------------------------------------
   // Global error handler — uniform { error: { code, message } } envelope
