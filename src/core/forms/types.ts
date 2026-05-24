@@ -128,6 +128,8 @@ export const formSpecSchema = z.object({
   calculations: CalculationsSchema.optional(),
   scoring: ScoringSchema.optional(),
   actions: ActionsSchema.optional(),
+  // ── Phase 3B L14: A/B experiment reference (null = default/control variant)
+  experiment_id: z.string().nullable().optional(),
 })
 
 export type FieldSpec = z.infer<typeof fieldSpecSchema>

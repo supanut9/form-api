@@ -35,6 +35,7 @@ import { publicAuthRoutes } from "./routes/public/auth.js";
 import { prefillPublicRoutes } from "./routes/public/prefill.js";
 import { templatesAdminRoutes } from "./routes/admin/templates.js";
 import { paymentsAdminRoutes } from "./routes/admin/payments.js";
+import { experimentsAdminRoutes } from "./routes/admin/experiments.js";
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -158,6 +159,7 @@ export async function buildServer() {
   await app.register(publicAuthRoutes);
   await app.register(prefillPublicRoutes);
   await app.register(paymentsAdminRoutes);
+  await app.register(experimentsAdminRoutes);
 
   // ---------------------------------------------------------------------------
   // Global error handler — uniform { error: { code, message } } envelope

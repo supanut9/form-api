@@ -28,6 +28,22 @@ datasource db {
 // Enums
 // ---------------------------------------------------------------------------
 
+enum ExperimentStatus {
+  draft
+  running
+  stopped
+
+  @@map("experiment_status")
+}
+
+enum ExperimentMetric {
+  submit_rate
+  completion_rate
+  payment_conversion
+
+  @@map("experiment_metric")
+}
+
 enum FormType {
   main
   dynamic
@@ -94,6 +110,7 @@ model FormDefinition {
   events       FormEvent[]
   webhooks     FormWebhook[]
   funnelEvents FormFunnelEvent[]
+  experiments  FormExperiment[]
 
   @@index([slug])
   @@index([ownerAccountId])
@@ -116,7 +133,8 @@ model FormVersion {
   publishedBy String?   @map("published_by")
   isCurrent   Boolean   @default(false) @map("is_current")
 
-  form FormDefinition @relation(fields: [formId], references: [id], onDelete: Cascade)
+  form               FormDefinition          @relation(fields: [formId], references: [id], onDelete: Cascade)
+  experimentVariants FormExperimentVariant[]
 
   @@unique([formId, version])
   @@index([formId, isCurrent])
@@ -507,6 +525,64 @@ model FormFunnelEvent {
   @@index([formId, eventName, occurredAt])
   @@index([anonymousToken])
   @@map("form_funnel_events")
+}
+
+// ---------------------------------------------------------------------------
+// A/B Experiments (Phase 3B – L14)
+// ---------------------------------------------------------------------------
+
+model FormExperiment {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  formId          String           @map("form_id") @db.Uuid
+  name            String
+  hypothesis      String?
+  status          ExperimentStatus @default(draft)
+  primaryMetric   ExperimentMetric @map("primary_metric")
+  startedAt       DateTime?        @map("started_at") @db.Timestamptz
+  stoppedAt       DateTime?        @map("stopped_at") @db.Timestamptz
+  winnerVariantId String?          @map("winner_variant_id") @db.Uuid
+
+  form      FormDefinition          @relation(fields: [formId], references: [id], onDelete: Cascade)
+  variants  FormExperimentVariant[]
+  exposures FormExperimentExposure[]
+
+  @@index([formId, status])
+  @@map("form_experiments")
+}
+
+model FormExperimentVariant {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  experimentId String   @map("experiment_id") @db.Uuid
+  label        String
+  versionId    String   @map("version_id") @db.Uuid
+  weightBps    Int      @map("weight_bps") // basis points; total per experiment = 10000
+
+  experiment FormExperiment         @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  version    FormVersion            @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  exposures  FormExperimentExposure[]
+
+  @@map("form_experiment_variants")
+}
+
+model FormExperimentExposure {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  experimentId   String   @map("experiment_id") @db.Uuid
+  variantId      String   @map("variant_id") @db.Uuid
+  anonymousToken String   @map("anonymous_token")
+  accountId      String?  @map("account_id")
+  exposedAt      DateTime @map("exposed_at") @db.Timestamptz
+
+  experiment FormExperiment        @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  variant    FormExperimentVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([experimentId, anonymousToken])
+  @@index([experimentId, exposedAt])
+  @@map("form_experiment_exposures")
 }
 
 // ---------------------------------------------------------------------------
