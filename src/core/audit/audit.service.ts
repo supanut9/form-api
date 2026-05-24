@@ -25,6 +25,7 @@ export type AuditAction =
   | 'submission.restore'
   | 'submission.export'
   | 'submission.skipped_fields_stripped'
+  | 'submission.payment_recorded'
   // events
   | 'event.create'
   | 'event.update'

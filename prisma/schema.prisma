@@ -146,6 +146,7 @@ model FormSubmission {
   files      FormFile[]
   eventFills FormEventFill[]
   deliveries FormWebhookDelivery[]
+  payments   FormPayment[]
 
   @@index([formId, status, submittedAt])
   @@index([accountId])
@@ -433,6 +434,39 @@ model FormTemplateUse {
 
   @@id([templateId, formId])
   @@map("form_template_uses")
+}
+
+// ---------------------------------------------------------------------------
+// Payments (Phase 3B)
+// ---------------------------------------------------------------------------
+
+enum FormPaymentStatus {
+  pending
+  succeeded
+  failed
+  refunded
+
+  @@map("form_payment_status")
+}
+
+model FormPayment {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  submissionId          String            @map("submission_id") @db.Uuid
+  stripePaymentIntentId String            @unique @map("stripe_payment_intent_id")
+  amountMinor           Int               @map("amount_minor")
+  currency              String // ISO 4217 lowercase
+  status                FormPaymentStatus @default(pending)
+  capturedAt            DateTime?         @map("captured_at") @db.Timestamptz
+  stripeEventId         String?           @unique @map("stripe_event_id") // idempotency key
+  stripeAccountId       String?           @map("stripe_account_id") // Connect destination
+
+  submission FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+
+  @@index([submissionId])
+  @@index([status])
+  @@map("form_payments")
 }
 
 // ---------------------------------------------------------------------------

@@ -55,6 +55,14 @@ const envSchema = z.object({
   S3_PUBLIC_URL: z.string().url().optional(),
 
   SENTRY_DSN: z.string().url().optional(),
+
+  // ---------------------------------------------------------------------------
+  // Phase 3B — Stripe payment integration (optional; service boots without these)
+  // ---------------------------------------------------------------------------
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  STRIPE_ENV: z.enum(['test', 'live']).default('test'),
 })
 
 const parsed = envSchema.safeParse(process.env)

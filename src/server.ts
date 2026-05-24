@@ -34,6 +34,7 @@ import { eventStatusInternalRoutes } from "./routes/internal/event-status.js";
 import { publicAuthRoutes } from "./routes/public/auth.js";
 import { prefillPublicRoutes } from "./routes/public/prefill.js";
 import { templatesAdminRoutes } from "./routes/admin/templates.js";
+import { paymentsAdminRoutes } from "./routes/admin/payments.js";
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -156,6 +157,7 @@ export async function buildServer() {
   await app.register(eventStatusInternalRoutes);
   await app.register(publicAuthRoutes);
   await app.register(prefillPublicRoutes);
+  await app.register(paymentsAdminRoutes);
 
   // ---------------------------------------------------------------------------
   // Global error handler — uniform { error: { code, message } } envelope

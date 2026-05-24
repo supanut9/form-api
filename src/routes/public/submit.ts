@@ -16,6 +16,7 @@ import { WebhookService } from '../../core/webhooks/webhook.service.js'
 import { FileService } from '../../core/files/file.service.js'
 import { AuditService } from '../../core/audit/audit.service.js'
 import { stripSkippedFields } from '../../core/submissions/payload.validator.js'
+import { PaymentService } from '../../core/payments/payment.service.js'
 
 const ANON_COOKIE = 'form_anon'
 
@@ -26,6 +27,7 @@ const bodySchema = z.object({
   payload: z.record(z.string(), z.unknown()).default({}),
   event_key: z.string().optional(),
   return_url: z.string().optional(),
+  payment_intent_id: z.string().optional(),
 })
 
 function hashIp(ip: string | undefined): string {
@@ -66,7 +68,18 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
           .status(500)
           .send({ error: { code: 'spec_invalid', message: 'Published spec is invalid' } })
       }
-      const spec = specParsed.data
+      // Cast spec to include Phase 3B payment extension (keys are passthrough-safe
+      // via formSpecSchema.passthrough; the payment sub-object is validated below).
+      const spec = specParsed.data as typeof specParsed.data & {
+        payment?: {
+          mode?: string
+          currency?: string
+          amount_minor?: number
+          capture_intent?: string
+          stripe_account_id?: string
+          required_for_submit?: boolean
+        }
+      }
 
       // Resolve identity per access.mode.
       const accountSub = request.session?.sub ?? null
@@ -114,6 +127,21 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
       const knownOnly: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(request.body.payload)) {
         if (fieldIds.has(k)) knownOnly[k] = v
+      }
+
+      // ── Phase 3B: payment gate ──────────────────────────────────────────────
+      // If the spec requires payment, the body MUST include payment_intent_id.
+      // Actual intent verification happens AFTER the submission row exists so
+      // we can write the FormPayment FK. If verification fails we hard-delete
+      // the orphaned submission row and return 402.
+      const paymentRequired = spec.payment?.required_for_submit === true
+      if (paymentRequired && !request.body.payment_intent_id) {
+        return reply.status(400).send({
+          error: {
+            code: 'payment_required',
+            message: 'payment_intent_id is required for this form',
+          },
+        })
       }
 
       const ipHash = hashIp(request.ip)
@@ -177,6 +205,45 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
         await app.prisma.formSubmission.update({
           where: { id: submission.id },
           data: { payloadJsonb: visitedOnly as object },
+        })
+      }
+
+      // ── Phase 3B: record payment after submission row exists ────────────────
+      // Re-verify the PaymentIntent server-side (never trust the client claim).
+      // On failure: hard-delete the orphaned submission row and return 402.
+      if (paymentRequired && request.body.payment_intent_id) {
+        const paymentService = new PaymentService(app.prisma)
+        try {
+          await paymentService.recordPaymentForSubmission({
+            submissionId: submission.id,
+            paymentIntentId: request.body.payment_intent_id,
+            stripeAccountId: spec.payment?.stripe_account_id ?? null,
+          })
+        } catch (err: unknown) {
+          const e = err as Error & { code?: string }
+          // Roll back: delete the orphaned submission row.
+          await app.prisma.formSubmission.delete({ where: { id: submission.id } }).catch(() => {})
+          if (e.code === 'intent_not_succeeded') {
+            return reply.status(402).send({
+              error: {
+                code: 'payment_not_captured',
+                message: 'The payment intent has not been captured',
+              },
+            })
+          }
+          throw err
+        }
+
+        // Audit the payment record event.
+        void new AuditService(app.prisma).record({
+          actorAccountId: accountSub ?? null,
+          action: 'submission.payment_recorded',
+          subjectType: 'Submission',
+          subjectId: submission.id,
+          diff: {
+            payment_intent_id: request.body.payment_intent_id,
+            form_id: form.id,
+          },
         })
       }
 
