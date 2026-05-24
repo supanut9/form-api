@@ -5,7 +5,7 @@
  * FormSubmission row. Enforces access.mode for authenticated/anonymous gating.
  * Phase-1: no file resolution, no webhooks (those land in later lanes).
  */
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { FastifyPluginAsync } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
@@ -17,8 +17,8 @@ import { FileService } from '../../core/files/file.service.js'
 import { AuditService } from '../../core/audit/audit.service.js'
 import { stripSkippedFields } from '../../core/submissions/payload.validator.js'
 import { PaymentService } from '../../core/payments/payment.service.js'
-
-const ANON_COOKIE = 'form_anon'
+import { hashIp } from '../../core/utils/hash.js'
+import { ANON_COOKIE, ANON_COOKIE_MAX_AGE } from '../../core/analytics/anonymous-token.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isUuid = (s: string) => UUID_RE.test(s)
@@ -29,11 +29,6 @@ const bodySchema = z.object({
   return_url: z.string().optional(),
   payment_intent_id: z.string().optional(),
 })
-
-function hashIp(ip: string | undefined): string {
-  const day = new Date().toISOString().slice(0, 10)
-  return createHash('sha256').update(`${ip ?? ''}|${day}`).digest('hex').slice(0, 32)
-}
 
 export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
   const app = fastify.withTypeProvider<ZodTypeProvider>()
@@ -61,6 +56,12 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
           .send({ error: { code: 'not_found', message: 'Form not found or not published' } })
       }
 
+      // Resolve anonymous token early so funnel emits below can use it.
+      // The definitive token/cookie set happens in the identity block below;
+      // we read the existing cookie value here only for pre-flight emits.
+      const earlyAnonToken =
+        request.cookies?.[ANON_COOKIE] ?? `anon-${randomUUID()}`
+
       // Validate the cached spec shape (defensive — already validated on publish).
       const specParsed = formSpecSchema.safeParse(form.currentVersionRow.specJson)
       if (!specParsed.success) {
@@ -81,6 +82,22 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
+      // ── Funnel: emit submit_attempt (fire-and-forget, non-blocking) ───────────
+      void app.prisma.formFunnelEvent
+        .create({
+          data: {
+            formId: form.id,
+            version: form.currentVersion,
+            anonymousToken: earlyAnonToken,
+            eventName: 'submit_attempt',
+            occurredAt: new Date(),
+            ipHash: hashIp(request.ip),
+          },
+        })
+        .catch((err) => {
+          fastify.log.warn({ err }, 'funnel submit_attempt emit failed (non-fatal)')
+        })
+
       // Resolve identity per access.mode.
       const accountSub = request.session?.sub ?? null
       let anonymousToken = request.cookies?.[ANON_COOKIE] ?? null
@@ -96,7 +113,7 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
           httpOnly: true,
           sameSite: 'lax',
           path: '/',
-          maxAge: 60 * 60 * 24 * 180,
+          maxAge: ANON_COOKIE_MAX_AGE,
         })
       }
 
@@ -336,6 +353,23 @@ export const submitPublicRoutes: FastifyPluginAsync = async (fastify) => {
         })
         .catch((err) => {
           fastify.log.warn({ err }, 'webhook enqueue failed (non-fatal)')
+        })
+
+      // ── Funnel: emit submit_ok (fire-and-forget, non-blocking) ───────────────
+      void app.prisma.formFunnelEvent
+        .create({
+          data: {
+            formId: form.id,
+            version: form.currentVersion,
+            submissionId: submission.id,
+            anonymousToken: anonymousToken ?? earlyAnonToken,
+            eventName: 'submit_ok',
+            occurredAt: new Date(),
+            ipHash: hashIp(request.ip),
+          },
+        })
+        .catch((err) => {
+          fastify.log.warn({ err }, 'funnel submit_ok emit failed (non-fatal)')
         })
 
       // Resolve redirect: spec.thank_you.redirect_url_template overrides

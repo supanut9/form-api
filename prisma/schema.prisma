@@ -88,11 +88,12 @@ model FormDefinition {
   ownerAccountId String    @map("owner_account_id")
   archivedAt     DateTime? @map("archived_at") @db.Timestamptz
 
-  versions    FormVersion[]
-  submissions FormSubmission[]
-  files       FormFile[]
-  events      FormEvent[]
-  webhooks    FormWebhook[]
+  versions     FormVersion[]
+  submissions  FormSubmission[]
+  files        FormFile[]
+  events       FormEvent[]
+  webhooks     FormWebhook[]
+  funnelEvents FormFunnelEvent[]
 
   @@index([slug])
   @@index([ownerAccountId])
@@ -449,6 +450,22 @@ enum FormPaymentStatus {
   @@map("form_payment_status")
 }
 
+// ---------------------------------------------------------------------------
+// Funnel events (Phase 3B – L11)
+// ---------------------------------------------------------------------------
+
+enum FunnelEventName {
+  view
+  page_enter
+  page_exit
+  field_focus
+  submit_attempt
+  submit_ok
+  submit_error
+
+  @@map("funnel_event_name")
+}
+
 model FormPayment {
   id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz
@@ -467,6 +484,29 @@ model FormPayment {
   @@index([submissionId])
   @@index([status])
   @@map("form_payments")
+}
+
+model FormFunnelEvent {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  formId         String          @map("form_id") @db.Uuid
+  version        Int
+  submissionId   String?         @map("submission_id") @db.Uuid
+  anonymousToken String          @map("anonymous_token")
+  eventName      FunnelEventName @map("event_name")
+  pageId         String?         @map("page_id")
+  fieldId        String?         @map("field_id")
+  occurredAt     DateTime        @map("occurred_at") @db.Timestamptz
+  ipHash         String?         @map("ip_hash")
+  userAgentHash  String?         @map("user_agent_hash")
+
+  form FormDefinition @relation(fields: [formId], references: [id], onDelete: Restrict)
+
+  @@index([formId, occurredAt])
+  @@index([formId, eventName, occurredAt])
+  @@index([anonymousToken])
+  @@map("form_funnel_events")
 }
 
 // ---------------------------------------------------------------------------
